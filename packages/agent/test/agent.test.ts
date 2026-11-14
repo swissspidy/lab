@@ -69,3 +69,54 @@ describe('AnthropicProvider', () => {
 		}
 	});
 });
+
+describe('ModelBuilder and siteFiles with symlinks and bad edits', () => {
+	it('never follows a symlink, neither to read context nor to write an edit', async () => {
+		const { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, rmSync } = await import('node:fs');
+		const { tmpdir } = await import('node:os');
+		const { join } = await import('node:path');
+		const { validateConfig } = await import('@lab/core');
+		const { ModelBuilder, ScriptedProvider, siteFiles } = await import('../src/index.ts');
+		const root = mkdtempSync(join(tmpdir(), 'lab-sym-'));
+		const outside = mkdtempSync(join(tmpdir(), 'lab-outside-'));
+		try {
+			mkdirSync(join(root, 'src'), { recursive: true });
+			mkdirSync(join(root, 'lab', 'invariants'), { recursive: true });
+			mkdirSync(join(root, 'dist'));
+			writeFileSync(join(root, 'src', 'a.html'), '<h1>A</h1>\n');
+			writeFileSync(join(root, 'lab', 'invariants', 'x.ts'), "const price = 'CHF 19';\n");
+			writeFileSync(join(root, 'dist', 'built.html'), 'built\n');
+			writeFileSync(join(outside, 'secret.txt'), 'secret token\n');
+			symlinkSync(join(outside, 'secret.txt'), join(root, 'src', 'notes.txt'));
+			symlinkSync('../lab/invariants/x.ts', join(root, 'src', 'alias.html'));
+			const config = validateConfig({
+				site: { repo: '.', build: 'b', outDir: './dist' },
+				metric: { id: 'm', kind: 'conversion' },
+				allow: ['src/**'],
+				deny: [],
+				budgets: { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 20 },
+				traffic: { share: 0.1, minSamplesPerBucket: 1000, maxDays: 14 },
+			}).config!;
+
+			const paths = siteFiles(root, config).map((f) => f.path);
+			assert.deepEqual(paths, ['src/a.html']);
+
+			const provider = new ScriptedProvider({
+				build: [
+					JSON.stringify({ edits: [null] }),
+					JSON.stringify({ edits: [{ path: 'src/alias.html', search: 'CHF 19', replace: 'CHF 29' }] }),
+					JSON.stringify({ edits: [{ path: 'src/a.html', search: '<h1>A</h1>', replace: '<h1>B</h1>' }] }),
+				],
+			});
+			const spec = { id: 'exp-0001', hypothesis: 'h', intent: 'i', acceptance: ['a'], expectedEffect: 'm up', touches: [], source: 'agent' as const, checks: [] };
+			const variant = await new ModelBuilder({ provider, config }).build(spec, { dir: root, commit: 'c' });
+			assert.match(variant.patch, /\+<h1>B<\/h1>/);
+			assert.equal(readFileSync(join(root, 'lab', 'invariants', 'x.ts'), 'utf8'), "const price = 'CHF 19';\n", 'the invariant behind the symlink is untouched');
+			assert.match(provider.requests[1]!.prompt, /Edit 0: must be an object/);
+			assert.match(provider.requests[2]!.prompt, /src\/alias\.html is a symlink/);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+});

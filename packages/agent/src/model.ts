@@ -2,7 +2,7 @@
 // edits); this code checks it and turns it into a patch. Nothing the model
 // writes is run.
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { StageError, effectiveDeny, hashPatch, matchesAny, validateSpec } from '@lab/core';
@@ -118,6 +118,20 @@ export class ModelProposer implements Proposer {
 
 type Edit = { path: string; search: string; replace: string } | { path: string; content: string };
 
+/** The first component of `rel` under `root` that is a symlink, if any. Writing through one could leave the scratch copy. */
+function symlinkOnPath(root: string, rel: string): string | null {
+	const parts = rel.split('/');
+	for (let i = 1; i <= parts.length; i++) {
+		const sub = parts.slice(0, i).join('/');
+		try {
+			if (lstatSync(join(root, sub)).isSymbolicLink()) return sub;
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
 function git(cwd: string, args: string[]): string {
 	return execFileSync('git', ['-c', 'core.quotepath=false', '-c', 'diff.noprefix=false', '-c', 'user.name=lab', '-c', 'user.email=lab@example.invalid', ...args], {
 		cwd,
@@ -143,6 +157,10 @@ export class ModelBuilder implements Builder {
 		const deny = effectiveDeny(this.config);
 		const problems: string[] = [];
 		for (const [i, e] of edits.entries()) {
+			if (typeof e !== 'object' || e === null || Array.isArray(e)) {
+				problems.push(`Edit ${i}: must be an object.`);
+				continue;
+			}
 			const edit = e as Partial<Record<string, unknown>>;
 			const path = edit.path;
 			if (typeof path !== 'string' || path.startsWith('/') || path.split('/').includes('..') || path.includes('\\')) {
@@ -160,12 +178,21 @@ export class ModelBuilder implements Builder {
 		try {
 			const source = resolve(repo.dir);
 			const skip = new Set(['node_modules', '.git', this.config.site.outDir.replace(/\/+$/, '')]);
-			cpSync(source, work, { recursive: true, filter: (src) => !skip.has(relative(source, src).split(sep)[0]!) && !relative(source, src).startsWith(join('lab', 'evidence')) && relative(source, src) !== join('lab', 'ledger.jsonl') });
+			cpSync(source, work, {
+				recursive: true,
+				verbatimSymlinks: true,
+				filter: (src) => !skip.has(relative(source, src).split(sep)[0]!) && !relative(source, src).startsWith(join('lab', 'evidence')) && relative(source, src) !== join('lab', 'ledger.jsonl'),
+			});
 			git(work, ['init', '-q']);
 			git(work, ['add', '-A']);
-			git(work, ['commit', '-q', '--allow-empty', '-m', 'base']);
+			git(work, ['commit', '-q', '--no-gpg-sign', '--no-verify', '--allow-empty', '-m', 'base']);
 			for (const [i, e] of (edits as Edit[]).entries()) {
 				const file = join(work, e.path);
+				const link = symlinkOnPath(work, e.path);
+				if (link) {
+					problems.push(`Edit ${i}: ${link} is a symlink. Edit the file it points to, if that is editable.`);
+					continue;
+				}
 				if ('content' in e) {
 					if (existsSync(file)) {
 						problems.push(`Edit ${i}: ${e.path} exists. Use "search" and "replace" to change it.`);

@@ -51,7 +51,7 @@
 
 - No real model has run the loop: this session has no API key. The scripted
   answers show the plumbing and the guardrails hold, not that Claude
-  proposes good experiments. Run `lab run --dry fixtures/site --iterations 10`
+  proposes good experiments. Run `npm run lab -- run --dry fixtures/site --iterations 10`
   with a key to see that, and record the result here.
 
 ## M1: Dry loop with a scripted proposer (2026-11-14)

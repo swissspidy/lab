@@ -1,11 +1,11 @@
 // What the model is shown of a site. Everything in here is untrusted data:
 // site content can carry text that looks like instructions.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { join, posix, relative, sep } from 'node:path';
 import { effectiveDeny, matchesAny } from '@lab/core';
 import type { CheckResult, LabConfig, LedgerEvent } from '@lab/core';
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'lab']);
+const SKIP_DIRS = new Set(['node_modules', '.git']);
 const TEXT = /\.(html?|css|m?js|ts|tsx|jsx|astro|vue|svelte|md|json|svg|txt|ya?ml)$/i;
 const MAX_FILE = 64 * 1024;
 const MAX_TOTAL = 400 * 1024;
@@ -21,16 +21,20 @@ export function siteFiles(dir: string, config: LabConfig): SiteFile[] {
 	const deny = effectiveDeny(config);
 	const out: SiteFile[] = [];
 	let total = 0;
-	const outDir = config.site.outDir.replace(/\/+$/, '');
+	const outDir = posix.normalize(config.site.outDir.split(sep).join('/')).replace(/\/+$/, '');
 	const walk = (current: string) => {
 		for (const name of readdirSync(current).toSorted()) {
 			const full = join(current, name);
 			const rel = relative(dir, full).split(sep).join('/');
-			const stat = statSync(full);
+			// Never follow a symlink: it could point outside the site.
+			const stat = lstatSync(full);
+			if (stat.isSymbolicLink()) continue;
 			if (stat.isDirectory()) {
-				if (!SKIP_DIRS.has(name) && rel !== outDir && !name.startsWith('.')) walk(full);
+				// `lab/` holds the invariants and the ledger: never shown to the model.
+				if (!SKIP_DIRS.has(name) && rel !== outDir && rel !== 'lab' && !name.startsWith('.')) walk(full);
 				continue;
 			}
+			if (!stat.isFile()) continue;
 			if (!TEXT.test(name) || stat.size > MAX_FILE || total + stat.size > MAX_TOTAL) continue;
 			if (/lock|\.env/i.test(name)) continue;
 			total += stat.size;

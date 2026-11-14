@@ -75,6 +75,8 @@ export class LocalSandbox implements Sandbox {
 			const skip = new Set(['node_modules', '.git', this.config.site.outDir.replace(/\/+$/, '')]);
 			cpSync(source, work, {
 				recursive: true,
+				// Keep relative symlinks relative, so they cannot reach back into the site.
+				verbatimSymlinks: true,
 				filter: (src) => {
 					const rel = relative(source, src);
 					if (rel === '') return true;
