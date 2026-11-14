@@ -34,8 +34,15 @@ ends in `verify_passed`. The second changes a price and ends in
 
 ## Status
 
-M1 of six milestones is done: the dry loop runs from a scripted proposal to
-a verdict. See [docs/PROGRESS.md](docs/PROGRESS.md).
+M2 of six milestones is done: the dry loop runs from a proposal, written by
+Claude or replayed from disk, to a verdict. See [docs/PROGRESS.md](docs/PROGRESS.md).
+
+With a key (`ANTHROPIC_API_KEY`, or `ant auth login`), let the model propose
+and build:
+
+```sh
+npm run lab -- run --dry fixtures/site --iterations 3
+```
 
 ## Verification
 
@@ -58,7 +65,8 @@ passes the same suite in the same run:
   spec guards, and the orchestrator.
 - `packages/sandbox`: the built-in sandbox.
 - `packages/verify`: the built-in verifier.
-- `packages/agent`: proposers and builders.
+- `packages/agent`: proposers and builders, replayed or model-backed, and
+  the `ModelProvider` they use.
 - `packages/cli`: the `lab` command.
 - `fixtures/site`: a small static site with two planted flaws.
 - `fixtures/good`, `fixtures/breakages`: patches that must pass, and patches

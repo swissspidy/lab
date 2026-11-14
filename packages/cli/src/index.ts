@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { FileLedger, LEDGER_FILE, doctor, runIteration, siteCommit } from '@lab/core';
 import type { Diagnostic, IterationResult } from '@lab/core';
-import { ReplayBuilder, ReplayProposer } from '@lab/agent';
+import { AnthropicProvider, ModelBuilder, ModelProposer, ReplayBuilder, ReplayProposer } from '@lab/agent';
 import { LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
 
@@ -14,6 +14,9 @@ Commands:
   run --dry [dir]       Run one iteration, from Propose to Verify, and record it.
       --experiment <d>  Replay the experiment in <d> (spec.json, patch.diff)
                         instead of asking a model.
+      --iterations <n>  With a model, run n iterations in a row. Default 1.
+                        The model is Claude (LAB_MODEL, default claude-opus-5-5),
+                        with credentials from ANTHROPIC_API_KEY or \`ant auth login\`.
       --ledger <file>   Ledger to use. Default: <dir>/lab/ledger.jsonl.
       --evidence <d>    Where screenshots go. Default: <dir>/lab/evidence.
 
@@ -49,6 +52,7 @@ async function main(argv: string[]): Promise<number> {
 			experiment: { type: 'string' },
 			ledger: { type: 'string' },
 			evidence: { type: 'string' },
+			iterations: { type: 'string' },
 		},
 	});
 	const [command, ...rest] = positionals;
@@ -74,8 +78,13 @@ async function main(argv: string[]): Promise<number> {
 				process.stderr.write('Only `lab run --dry` exists until Ship arrives in M3.\n');
 				return 64;
 			}
-			if (!values.experiment) {
-				process.stderr.write('`lab run --dry` needs --experiment <dir> until the model-backed proposer arrives in M2.\n');
+			const iterations = Number(values.iterations ?? 1);
+			if (!Number.isInteger(iterations) || iterations < 1 || iterations > 100) {
+				process.stderr.write('--iterations must be a whole number from 1 to 100.\n');
+				return 64;
+			}
+			if (values.experiment && iterations !== 1) {
+				process.stderr.write('A replayed experiment runs once; drop --iterations.\n');
 				return 64;
 			}
 			const report = await doctor(rest[0] ?? '.');
@@ -84,21 +93,27 @@ async function main(argv: string[]): Promise<number> {
 				return 1;
 			}
 			const { config, siteDir } = report;
-			const experiment = resolve(values.experiment);
-			const result = await runIteration({
-				config,
-				site: { dir: siteDir, commit: siteCommit(siteDir) },
-				ledger: new FileLedger(resolve(values.ledger ?? resolve(siteDir, LEDGER_FILE))),
-				proposer: new ReplayProposer(experiment),
-				builder: new ReplayBuilder(experiment),
-				sandbox: new LocalSandbox({ config }),
-				verifier: new BrowserVerifier({ config, siteDir }),
-				evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')),
-				dry: true,
-			});
-			if (values.json) process.stdout.write(`${JSON.stringify(result, null, '\t')}\n`);
-			else process.stdout.write(summarize(result));
-			return result.outcome === 'verify_passed' ? 0 : result.outcome === 'verify_failed' ? 1 : 2;
+			const experiment = values.experiment ? resolve(values.experiment) : null;
+			const provider = experiment ? null : new AnthropicProvider();
+			const results: IterationResult[] = [];
+			for (let i = 0; i < iterations; i++) {
+				const result = await runIteration({
+					config,
+					site: { dir: siteDir, commit: siteCommit(siteDir) },
+					ledger: new FileLedger(resolve(values.ledger ?? resolve(siteDir, LEDGER_FILE))),
+					proposer: experiment ? new ReplayProposer(experiment) : new ModelProposer({ provider: provider!, config }),
+					builder: experiment ? new ReplayBuilder(experiment) : new ModelBuilder({ provider: provider!, config }),
+					sandbox: new LocalSandbox({ config }),
+					verifier: new BrowserVerifier({ config, siteDir }),
+					evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')),
+					dry: true,
+				});
+				results.push(result);
+				if (!values.json) process.stdout.write(summarize(result));
+			}
+			if (values.json) process.stdout.write(`${JSON.stringify(results.length === 1 ? results[0] : results, null, '\t')}\n`);
+			const last = results.at(-1)!;
+			return last.outcome === 'verify_passed' ? 0 : last.outcome === 'verify_failed' ? 1 : 2;
 		}
 		default:
 			process.stderr.write(`Unknown command \`${command}\`.\n\n${USAGE}\n`);
