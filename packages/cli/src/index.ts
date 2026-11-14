@@ -22,6 +22,9 @@ import { AnthropicProvider, ModelBuilder, ModelProposer, ReplayBuilder, ReplayPr
 import { MetricStore, ReferenceDeployer, StoreMeter, readState, startEdgeServer } from '@lab/deploy';
 import { LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
+import { GraftSpecProposer, recordingGraftSpecs } from '@lab/adapters';
+import { writeReport } from '@lab/report';
+import { existsSync } from 'node:fs';
 
 const USAGE = `Usage: lab <command> [dir] [options]
 
@@ -36,12 +39,14 @@ Commands:
   approve <id> [dir]        Approve a verified experiment for shipping.
   status [dir]              The live experiment, its numbers and the deploy state.
   kill [dir]                Stop every variant now: share 0%, no deploy.
+  report [dir]              Write the ledger as a static HTML page (--out).
   publish [dir]             Build the site and publish it on the reference host.
   serve [dir]               Run the reference host's edge server.
 
 Options:
-  --experiment <d>   Replay the experiment in <d> (spec.json, patch.diff)
-                     instead of asking a model.
+  --experiment <d>   Replay the experiment in <d> (spec.json or a Graft
+                     spec.md, and patch.diff) instead of asking a model.
+  --out <d>          For report. Default: <dir>/lab/report.
   --iterations <n>   With --dry and a model, run n iterations. Default 1.
   --ledger <file>    Default: <dir>/lab/ledger.jsonl.
   --evidence <d>     Default: <dir>/lab/evidence.
@@ -91,6 +96,7 @@ async function main(argv: string[]): Promise<number> {
 			host: { type: 'string' },
 			port: { type: 'string' },
 			by: { type: 'string' },
+			out: { type: 'string' },
 		},
 	});
 	const [command, ...rest] = positionals;
@@ -98,7 +104,7 @@ async function main(argv: string[]): Promise<number> {
 		process.stdout.write(`${USAGE}\n`);
 		return command || values.help ? 0 : 64;
 	}
-	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve'];
+	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report'];
 	if (!known.includes(command)) {
 		process.stderr.write(`Unknown command \`${command}\`.\n\n${USAGE}\n`);
 		return 64;
@@ -158,7 +164,11 @@ async function main(argv: string[]): Promise<number> {
 				config,
 				site: { dir: siteDir, commit: siteCommit(siteDir) },
 				ledger,
-				proposer: experiment ? new ReplayProposer(experiment) : new ModelProposer({ provider: provider!, config }),
+				proposer: experiment
+					? existsSync(resolve(experiment, 'spec.md')) && !existsSync(resolve(experiment, 'spec.json'))
+						? new GraftSpecProposer(experiment)
+						: new ReplayProposer(experiment)
+					: recordingGraftSpecs(new ModelProposer({ provider: provider!, config }), resolve(siteDir, 'lab', 'specs')),
 				builder: experiment ? new ReplayBuilder(experiment) : new ModelBuilder({ provider: provider!, config }),
 				sandbox: new LocalSandbox({ config }),
 				verifier: new BrowserVerifier({ config, siteDir }),
@@ -210,6 +220,11 @@ async function main(argv: string[]): Promise<number> {
 			out.waiting = waiting;
 			for (const [id, s] of waiting) lines.push(`${id}: ${s === 'approved' ? 'approved, ships on the next run' : 'verified, waiting for approval'}`);
 			process.stdout.write(values.json ? `${JSON.stringify(out, null, '\t')}\n` : `${lines.join('\n')}\n`);
+			return 0;
+		}
+		case 'report': {
+			const file = writeReport(await ledger.history(), resolve(values.out ?? resolve(siteDir, 'lab', 'report')), { title: `Lab report: ${siteDir.split('/').at(-1)}` });
+			process.stdout.write(`Wrote ${file}\n`);
 			return 0;
 		}
 		case 'publish': {

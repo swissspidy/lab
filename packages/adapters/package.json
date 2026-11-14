@@ -1,0 +1,15 @@
+{
+	"name": "@lab/adapters",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Adapters to Graft, Sandburg and Assay, behind the lab's stage interfaces.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@lab/core": "0.0.0",
+		"@swissspidy/graft-core": "^0.1.1"
+	}
+}

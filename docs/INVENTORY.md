@@ -135,3 +135,11 @@ which fits "invariants are created once and frozen".
 5. Tooling follows the three projects: npm workspaces (as Sandburg and
    Assay), TypeScript 7 run directly by Node, `node --test`, oxlint,
    Apache-2.0.
+
+## Adapter status (M4)
+
+| Project | Adapter | Why |
+| --- | --- | --- |
+| Graft | Added (`@lab/adapters`) | Its parser is published as `@swissspidy/graft-core` 0.1.1 and reads lab specs written in its Markdown format. Graft has no writer, so the lab writes the Markdown itself. |
+| Sandburg | Not added | No API returns a URL for a running site, and it serves dev servers, not built output. Published version: 0.2.0. |
+| Assay | Not added | Not published to npm (404 on 2026-11-14), and no aXe, console or Lighthouse checks. Its deterministic checks would fit the invariants gate once it is published. |

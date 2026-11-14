@@ -41,8 +41,11 @@ ends in `verify_passed`. The second changes a price and ends in
 
 M3 of six milestones is done: the loop ships a verified, approved variant to
 a share of traffic, measures it and keeps or reverts it, on simulated
-traffic. It has not run on a real site yet (M4). See
-[docs/PROGRESS.md](docs/PROGRESS.md).
+traffic. M4 is partly done (the ledger report and the Graft spec adapter); it
+needs a real target site to finish. See [docs/PROGRESS.md](docs/PROGRESS.md).
+
+`lab report` writes the ledger as a static HTML page that someone who has
+never seen the repository can read.
 
 With a key (`ANTHROPIC_API_KEY`, or `ant auth login`), let the model propose
 and build:
@@ -115,7 +118,11 @@ passes the same suite in the same run:
 - `packages/verify`: the built-in verifier.
 - `packages/agent`: proposers and builders, replayed or model-backed, and
   the `ModelProvider` they use.
+- `packages/deploy`: the reference deployer, edge server, beacon and meter.
+- `packages/report`: the static ledger viewer.
+- `packages/adapters`: adapters to Graft (and later Sandburg and Assay).
 - `packages/cli`: the `lab` command.
+- `fixtures/sim`: the traffic simulator.
 - `fixtures/site`: a small static site with two planted flaws.
 - `fixtures/good`, `fixtures/breakages`: patches that must pass, and patches
   that must be rejected with a named check.

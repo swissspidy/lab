@@ -1,5 +1,46 @@
 # Progress
 
+## M4: One real site, gated (partly done, 2026-11-14)
+
+The gate is blocked: M4's acceptance test (three experiments through the full
+loop on the real site, with human approval at Ship) needs the target site,
+which is still an open question in the brief. Everything that does not need
+it is done.
+
+**Built**
+
+- `@lab/report` and `lab report [dir] [--out d]`: one static HTML page, no
+  scripts, every value escaped. Newest first, each experiment shows its
+  outcome, hypothesis, change, expected effect, acceptance criteria (met or
+  not), the diff, every verification result with its evidence (screenshots
+  copied next to the page, console output, build logs), the daily
+  measurements and decisions, and a timeline including who approved it. A
+  short "how to read this" explains the loop and P(expected effect).
+- `@lab/adapters`, Graft: an experiment spec written as a Graft spec
+  (frontmatter, title, intent paragraph, `## Acceptance criteria` with
+  `{#c0}` ids; lab-only fields under `lab:`) and read back with Graft's own
+  published parser (`@swissspidy/graft-core/parse`). `lab run --experiment`
+  replays a Graft `spec.md`; model proposals are also written to
+  `lab/specs/<id>.md` for review.
+- The Sandburg and Assay adapters are not added: the inventory says neither
+  is ready (`docs/INVENTORY.md`, "Adapter status").
+
+**Verified**
+
+- The report: a ledger with a kept and a rejected experiment renders the
+  diff, criteria, results, measurements and approver; a `<script>` in a
+  hypothesis comes out escaped and the page has no script tags; evidence is
+  copied. A report built from five real fixture runs was checked by eye in
+  Chromium.
+- The Graft adapter: a fixture spec round-trips exactly through Graft
+  Markdown and Graft's parser.
+
+**Not done**
+
+- Wiring the lab to the target site, and the three gated experiments.
+- A real host's edge function: the reference edge server is a Node process.
+  The first concrete host follows from where the target site is hosted.
+
 ## M3: Ship, measure, decide (simulated traffic) (2026-11-14)
 
 **Built**
