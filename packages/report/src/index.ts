@@ -60,6 +60,7 @@ function reasonOf(event: LedgerEvent): string {
 	if (typeof p.reason === 'string') return p.reason === 'kill' ? 'Stopped with the kill switch.' : p.reason;
 	if (typeof p.message === 'string') return p.message;
 	if (Array.isArray(p.failures)) return (p.failures as CheckResult[]).map((f) => f.check).join(', ');
+	if (Array.isArray(p.diagnostics)) return (p.diagnostics as Array<{ code?: unknown; message?: unknown }>).map((d) => `${String(d.code)}: ${String(d.message)}`).join(' ');
 	return '';
 }
 
@@ -120,7 +121,7 @@ export function renderReport(events: LedgerEvent[], options: ReportOptions = {})
 	const href = options.evidenceHref ?? (() => null);
 	const count = (state: string) => views.filter((v) => v.state === state).length;
 	const sections = views.map((v) => {
-		const criteria = (v.spec.acceptance ?? []).map((c, i) => {
+		const criteria = (Array.isArray(v.spec.acceptance) ? v.spec.acceptance : []).map((c, i) => {
 			const checks = v.results.filter((r) => r.gate === 'acceptance');
 			const mine = checks.filter((r) => r.message.startsWith(`“${c}”`));
 			const status = mine.length === 0 ? '' : mine.every((r) => r.passed) ? ' <span class="pass">met</span>' : ' <span class="fail">not met</span>';

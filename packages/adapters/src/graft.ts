@@ -23,11 +23,11 @@ const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 /** Writes a spec as Graft Markdown. JSON is valid YAML, so nested lab fields are written as JSON. */
 export function toGraftMarkdown(spec: ExperimentSpec): string {
 	const lab: LabFrontmatter = { hypothesis: spec.hypothesis, expectedEffect: spec.expectedEffect, touches: spec.touches, source: spec.source, checks: spec.checks };
-	const criteria = spec.acceptance.map((c, i) => `- ${oneLine(c).replaceAll('{#', '{ #')} {#c${i}}`);
+	const criteria = spec.acceptance.map((c, i) => `- ${oneLine(c)} {#c${i}}`);
 	return [
 		'---',
 		'graft: 1',
-		`id: ${spec.id}`,
+		`id: ${JSON.stringify(spec.id)}`,
 		'host: website',
 		`lab: ${JSON.stringify(lab)}`,
 		'---',

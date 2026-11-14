@@ -43,6 +43,20 @@ describe('report', () => {
 		}
 	});
 
+	it('shows why an invalid proposal was aborted, and survives a malformed spec', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
+		try {
+			const ledger = new FileLedger(join(dir, 'ledger.jsonl'));
+			const base = { experiment: 'exp-0003', siteCommit: 'c', patchHash: null };
+			await ledger.append({ ...base, type: 'proposed', payload: { source: 'agent', spec: { intent: 'x', acceptance: 'not a list' } } });
+			await ledger.append({ ...base, type: 'aborted', payload: { stage: 'propose', diagnostics: [{ code: 'spec-criterion-unchecked', message: 'Criterion 0 has no check.' }] } });
+			const html = renderReport(await ledger.history());
+			assert.ok(html.includes('spec-criterion-unchecked: Criterion 0 has no check.'));
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('escapes everything the ledger holds', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
 		try {

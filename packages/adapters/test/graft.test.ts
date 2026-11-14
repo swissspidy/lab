@@ -12,11 +12,19 @@ const spec = JSON.parse(readFileSync(join(fixtures, 'good', 'install-in-hero', '
 describe('Graft spec adapter', () => {
 	it('round-trips a spec through Graft Markdown and Graft’s parser', () => {
 		const md = toGraftMarkdown(spec);
-		assert.match(md, /^---\ngraft: 1\nid: good-install-in-hero\nhost: website\n/);
+		assert.match(md, /^---\ngraft: 1\nid: "good-install-in-hero"\nhost: website\n/);
 		assert.match(md, /## Acceptance criteria\n\n- The install command is visible without scrolling at 1280x800 and 390x844\. \{#c0\}/);
 		const { spec: back, diagnostics } = fromGraftMarkdown(md);
 		assert.deepEqual(diagnostics, []);
 		assert.deepEqual(back, spec);
+	});
+
+	it('keeps literal {#…} text and numeric-looking ids as they are', () => {
+		const odd = { ...spec, id: '123', acceptance: ['Keep {#install} as typed.', 'Second.'], checks: [] };
+		const { spec: back, diagnostics } = fromGraftMarkdown(toGraftMarkdown(odd));
+		assert.deepEqual(diagnostics, []);
+		assert.equal(back?.id, '123');
+		assert.deepEqual(back?.acceptance, odd.acceptance);
 	});
 
 	it('reports what is missing instead of throwing', () => {

@@ -47,6 +47,10 @@ needs a real target site to finish. See [docs/PROGRESS.md](docs/PROGRESS.md).
 `lab report` writes the ledger as a static HTML page that someone who has
 never seen the repository can read.
 
+Model proposals are also written to `lab/specs/<id>.md` as Graft specs. Ignore
+`lab/specs/`, `lab/report/` and `lab/evidence/` in the site's `.gitignore`, or
+commit them: a kept experiment is merged only into a clean tree.
+
 With a key (`ANTHROPIC_API_KEY`, or `ant auth login`), let the model propose
 and build:
 
