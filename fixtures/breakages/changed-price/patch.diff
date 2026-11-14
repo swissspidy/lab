@@ -1,0 +1,13 @@
+diff --git a/src/pages/pricing.html b/src/pages/pricing.html
+index 22de096..0fe2e13 100644
+--- a/src/pages/pricing.html
++++ b/src/pages/pricing.html
+@@ -16,7 +16,7 @@
+ 		</section>
+ 		<section class="plan" aria-labelledby="plan-team">
+ 			<h2 id="plan-team">Team</h2>
+-			<p class="price" data-price>CHF 19 per month</p>
++			<p class="price" data-price>CHF 29 per month</p>
+ 			<p>Unlimited pages and a shared link cache.</p>
+ 		</section>
+ 	</div>

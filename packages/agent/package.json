@@ -1,0 +1,14 @@
+{
+	"name": "@lab/agent",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Proposers and builders: replayed from disk (M1) and model-backed (M2).",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@lab/core": "0.0.0"
+	}
+}

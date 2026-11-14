@@ -61,7 +61,7 @@ export function validateConfig(raw: unknown): ConfigResult {
 	}
 
 	const shape: Record<string, Record<string, string> | string> = {
-		site: { repo: 'string', build: 'string', outDir: 'string' },
+		site: { repo: 'string', build: 'string', outDir: 'string', check: 'string?' },
 		metric: { id: 'string', kind: 'string' },
 		guardrailMetrics: 'string[]',
 		allow: 'string[]',
@@ -131,11 +131,12 @@ export function validateConfig(raw: unknown): ConfigResult {
 		}
 		for (const [sub, subType] of Object.entries(type)) {
 			const path = `${key}.${sub}`;
+			const optional = subType.endsWith('?');
 			if (value[sub] === undefined) {
-				error('config-missing-key', path, `\`${path}\` is required.`);
+				if (!optional) error('config-missing-key', path, `\`${path}\` is required.`);
 				continue;
 			}
-			checkType(value[sub], subType, path);
+			checkType(value[sub], optional ? subType.slice(0, -1) : subType, path);
 		}
 	}
 

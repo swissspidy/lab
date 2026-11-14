@@ -1,0 +1,12 @@
+diff --git a/src/pages/docs.html b/src/pages/docs.html
+index ddfefe2..e1d1b2f 100644
+--- a/src/pages/docs.html
++++ b/src/pages/docs.html
+@@ -5,6 +5,7 @@
+ <title>Documentation · Kestrel</title>
+ </head>
+ <body>
++<script>console.error("Widget failed to start");</script>
+ <!-- component:header -->
+ <main>
+ 	<h1>Documentation</h1>

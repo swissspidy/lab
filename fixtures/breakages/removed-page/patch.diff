@@ -1,0 +1,33 @@
+diff --git a/src/pages/pricing.html b/src/pages/pricing.html
+deleted file mode 100644
+index 22de096..0000000
+--- a/src/pages/pricing.html
++++ /dev/null
+@@ -1,27 +0,0 @@
+-<!doctype html>
+-<html lang="en">
+-<head>
+-<!-- component:layout-head -->
+-<title>Pricing · Kestrel</title>
+-</head>
+-<body>
+-<!-- component:header -->
+-<main>
+-	<h1>Pricing</h1>
+-	<div class="plans">
+-		<section class="plan" aria-labelledby="plan-free">
+-			<h2 id="plan-free">Free</h2>
+-			<p class="price" data-price>CHF 0 per month</p>
+-			<p>Up to 500 pages per run.</p>
+-		</section>
+-		<section class="plan" aria-labelledby="plan-team">
+-			<h2 id="plan-team">Team</h2>
+-			<p class="price" data-price>CHF 19 per month</p>
+-			<p>Unlimited pages and a shared link cache.</p>
+-		</section>
+-	</div>
+-	<p><a class="button" href="docs.html" data-lab-event="next_step_click">Start with the free plan</a></p>
+-</main>
+-<!-- component:footer -->
+-</body>
+-</html>

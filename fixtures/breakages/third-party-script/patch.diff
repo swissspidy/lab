@@ -1,0 +1,9 @@
+diff --git a/src/components/layout-head.html b/src/components/layout-head.html
+index 1410a23..a3914df 100644
+--- a/src/components/layout-head.html
++++ b/src/components/layout-head.html
+@@ -2,3 +2,4 @@
+ <meta name="viewport" content="width=device-width, initial-scale=1">
+ <link rel="stylesheet" href="styles/site.css">
+ <script type="module" src="scripts/site.js"></script>
++<script src="https://cdn.example.com/widget.js"></script>

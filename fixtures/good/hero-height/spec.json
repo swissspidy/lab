@@ -1,0 +1,49 @@
+{
+	"id": "good-hero-height",
+	"hypothesis": "Visitors miss Get started because a tall illustration pushes it below the fold.",
+	"intent": "Shrink the hero illustration so the install command and Get started fit above the fold.",
+	"acceptance": [
+		"Get started is visible without scrolling at 1280x800.",
+		"The install command is visible without scrolling at 1280x800."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"src/styles/site.css"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"viewport": {
+				"width": 1280,
+				"height": 800
+			},
+			"expect": [
+				{
+					"expect": "in-viewport",
+					"target": {
+						"role": "link",
+						"name": "Get started"
+					}
+				}
+			]
+		},
+		{
+			"criterion": 1,
+			"page": "index.html",
+			"viewport": {
+				"width": 1280,
+				"height": 800
+			},
+			"expect": [
+				{
+					"expect": "in-viewport",
+					"target": {
+						"css": "[data-install-command]"
+					}
+				}
+			]
+		}
+	]
+}

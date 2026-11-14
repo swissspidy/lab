@@ -18,3 +18,13 @@ conservative choice the lab took meanwhile.
    Should Graft gain a `website` host (with `touches` as its scope), or
    should the lab keep its own JSON schema and only borrow Graft's Markdown
    layout? Meanwhile the lab keeps its own schema.
+5. **Lighthouse.** Running Lighthouse adds a large dependency and a second
+   Chrome launcher, and its scores vary on shared CI machines. The lab
+   measures LCP and CLS in the page with `PerformanceObserver` and checks
+   them against the budgets. Add Lighthouse if you want its other audits.
+6. **Acceptance checks as data.** The brief does not say how acceptance
+   criteria become checks. The proposer writes them as JSON steps and
+   assertions with the spec, and the verifier interprets them, so no
+   agent-written code ever runs. If a criterion cannot be expressed in that
+   vocabulary, the spec is refused. The vocabulary grows when a real
+   criterion needs it.

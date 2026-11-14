@@ -1,0 +1,62 @@
+{
+	"id": "good-nav-docs",
+	"hypothesis": "Visitors who want the docs do not find them, because only the footer links to them.",
+	"intent": "Add a Docs link to the main navigation.",
+	"acceptance": [
+		"The main navigation links to docs.html.",
+		"The new link is tracked as next_step_click."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"src/components/header.html"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "pricing.html",
+			"expect": [
+				{
+					"expect": "visible",
+					"target": {
+						"css": "nav[aria-label=\"Main\"] a[href=\"docs.html\"]"
+					}
+				}
+			]
+		},
+		{
+			"criterion": 1,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "attribute",
+					"target": {
+						"css": "nav[aria-label=\"Main\"] a[href=\"docs.html\"]"
+					},
+					"name": "data-lab-event",
+					"equals": "next_step_click"
+				}
+			]
+		},
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"steps": [
+				{
+					"do": "click",
+					"target": {
+						"role": "link",
+						"name": "Docs",
+						"exact": true
+					}
+				}
+			],
+			"expect": [
+				{
+					"expect": "url",
+					"endsWith": "/docs.html"
+				}
+			]
+		}
+	]
+}

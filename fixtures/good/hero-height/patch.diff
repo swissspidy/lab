@@ -1,0 +1,13 @@
+diff --git a/src/styles/site.css b/src/styles/site.css
+index 3cd9c8c..451db6f 100644
+--- a/src/styles/site.css
++++ b/src/styles/site.css
+@@ -19,7 +19,7 @@ a { color: var(--accent); }
+ .search-results { flex-basis: 100%; }
+ .hero h1 { font-size: 2.25rem; line-height: 1.2; }
+ .hero-art {
+-	height: 720px;
++	height: 120px;
+ 	border-radius: 8px;
+ 	background: linear-gradient(160deg, #dbe8f5, #f4f7fa 60%, #e6eef7);
+ }

@@ -1,0 +1,28 @@
+{
+	"id": "good-features-heading",
+	"hypothesis": "A heading that names the product reads more clearly than “What it checks”.",
+	"intent": "Rename the features heading to “What Kestrel checks”.",
+	"acceptance": [
+		"The features heading reads “What Kestrel checks”."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"src/pages/index.html"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "text",
+					"target": {
+						"css": "#features-title"
+					},
+					"equals": "What Kestrel checks"
+				}
+			]
+		}
+	]
+}
