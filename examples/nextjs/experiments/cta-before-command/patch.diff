@@ -1,0 +1,19 @@
+diff --git a/components/Install.jsx b/components/Install.jsx
+index c053704..fb4bcc8 100644
+--- a/components/Install.jsx
++++ b/components/Install.jsx
+@@ -10,13 +10,13 @@ export default function Install() {
+ 		<section className="install" aria-labelledby="install-title">
+ 			<h2 id="install-title">Install</h2>
+ 			<p>Driftwood runs on Node 22 or later.</p>
++			<p><Link className="button" href="/docs" data-lab-event="next_step_click">Get started</Link></p>
+ 			<div className="command">
+ 				<code data-install-command>{COMMAND}</code>
+ 				<button type="button" onClick={async () => { await navigator.clipboard.writeText(COMMAND); setCopied(true); }}>
+ 					{copied ? 'Copied' : 'Copy'}
+ 				</button>
+ 			</div>
+-			<p><Link className="button" href="/docs" data-lab-event="next_step_click">Get started</Link></p>
+ 		</section>
+ 	);
+ }

@@ -39,10 +39,17 @@ ends in `verify_passed`. The second changes a price and ends in
 
 ## Status
 
-M4 of six milestones is done, on a local Next.js site with synthetic
-traffic: three experiments went through verify, approval, ship, measure and
-decide, two were kept and merged, one was reverted, and a breakage was
-rejected. See [docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
+All six milestones have run, on a local Next.js site with synthetic traffic
+and a simulated clock:
+
+- M4: three experiments went through verify, approval, ship, measure and
+  decide; two were kept and merged, one was reverted, and a breakage was
+  rejected.
+- M5 (rehearsal): after a kill switch test, the lab ran seven days in `auto`
+  mode with no approvals but its own. See [docs/WEEK-ONE.md](docs/WEEK-ONE.md).
+
+Nothing has met real visitors or a real model yet. See
+[docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
 [docs/runs/nextjs/index.html](docs/runs/nextjs/index.html).
 
 ## Try it on a Next.js site
@@ -51,7 +58,7 @@ rejected. See [docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
 npm install
 npm install --prefix examples/nextjs
 npm run lab -- run --dry examples/nextjs --experiment examples/nextjs/experiments/nav-docs
-npm run example:nextjs   # the full loop on simulated time, about 3 minutes
+npm run example:nextjs   # M4 and an unattended week on simulated time, about 6 minutes
 ```
 
 `lab report` writes the ledger as a static HTML page that someone who has
@@ -87,6 +94,14 @@ one step:
 random first-party id that carries nothing else, and counts visits,
 conversions, errors and engagement per bucket and interval, never per
 visitor.
+
+### Autonomy
+
+`autonomy` is `propose-only` (stop after Verify), `gated` (a person runs
+`lab approve`; the default) or `auto`. `auto` takes effect only once the
+ledger shows three experiments that completed the loop with a person's
+approval, no guardrail rollbacks, and a kill switch used on a live
+experiment. Until then an `auto` site waits for approval like a gated one.
 
 ### Decision rule
 

@@ -11,3 +11,4 @@ export * from './stats.ts';
 export * from './decider.ts';
 export * from './lifecycle.ts';
 export * from './static.ts';
+export * from './autonomy.ts';

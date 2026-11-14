@@ -1,5 +1,54 @@
 # Progress
 
+## M5: One unattended week, rehearsed on the local Next.js site (2026-11-14)
+
+A rehearsal of M5 on `examples/nextjs`, with synthetic visitors on a
+simulated clock and experiments replayed from disk. It shows the loop runs a
+week in `auto` mode without a person. It is not the launch week: no real
+visitors, no real host, no model. See `docs/WEEK-ONE.md`.
+
+**Built**
+
+- `autonomy: 'auto'` is accepted (with a warning) and takes effect only when
+  the ledger meets M5's entry criteria (`autonomyEntry` in core): at least
+  three experiments completed the full loop with an approval other than the
+  lab's own, no shipped variant tripped a guardrail (an escape), and the
+  kill switch stopped a live experiment. Until then an auto site behaves as
+  gated, and `tick` says which criteria are missing. `lab doctor` warns
+  about each unmet criterion.
+- Once they hold, `tick` approves a verified experiment as `auto` and ships
+  it in the same run.
+- The harness (`npm run example:nextjs`, `--week`) continues after M4:
+  a kill drill on the site, the site owner switching to `auto` in a commit,
+  then 28 scheduled runs (one per 6 hours) with nobody approving anything,
+  and `WEEK-ONE.md` written from the ledger.
+
+**Verified** (`npm run test:nextjs`)
+
+- After `lab kill`, 0 of 40 visitors got a variant; the ledger records the
+  kill, which satisfies the entry criterion.
+- During the week: zero approvals but the lab's own. Get started above the
+  command (true effect +20%) was proposed, verified, approved by the lab,
+  shipped and kept on day 2.5, and merged. Hiding the search button was
+  rejected by `invariants.search-returns-results`. A reordering with no true
+  effect shipped and was still undecided at the end of the week.
+- Auto-mode unit tests: waits while criteria are unmet, ships once they
+  hold, stops after an escape, and never counts its own approvals.
+
+**What the week showed**
+
+- No wrong decision against the true effects.
+- A variant with no effect holds the only experiment slot until maxDays
+  (14 days). With one experiment at a time, a null result stalls the queue
+  for up to two weeks. A shorter maxDays or a futility rule would help;
+  left as a question.
+
+**Not verified**
+
+- Real visitors, a real host, consent, a model proposing: all skipped, as
+  decided. The approvals that unlocked auto mode came from the agent acting
+  as operator.
+
 ## M4: One real site, gated, on a local Next.js site (2026-11-14)
 
 The target site is a local Next.js app, `examples/nextjs` (Driftwood, a

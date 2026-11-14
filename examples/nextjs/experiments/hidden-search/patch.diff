@@ -1,0 +1,9 @@
+diff --git a/app/globals.css b/app/globals.css
+index 451db6f..397192d 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -31,3 +31,4 @@ code { font-family: ui-monospace, monospace; background: #f1f3f5; padding: .1rem
+ .price { font-size: 1.25rem; font-weight: 700; }
+ .site-footer { border-top: 1px solid var(--line); color: var(--muted); }
+ input, button { font: inherit; }
++.search button { display: none; }

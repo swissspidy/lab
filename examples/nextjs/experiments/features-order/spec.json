@@ -1,0 +1,28 @@
+{
+	"id": "exp-0008",
+	"hypothesis": "Reviewers care most about links in the review, so leading with them draws them in.",
+	"intent": "List review links first among the features.",
+	"acceptance": [
+		"The first feature listed is the review links."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"app/page.jsx"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "text",
+					"target": {
+						"css": ".features li"
+					},
+					"equals": "Links posted in the review automatically"
+				}
+			]
+		}
+	]
+}

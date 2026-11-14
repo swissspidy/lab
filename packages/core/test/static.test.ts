@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
@@ -18,9 +18,11 @@ describe('resolveStatic', () => {
 			writeFileSync(join(root, 'blog', 'index.html'), 'blog');
 			writeFileSync(join(dir, 'secret.txt'), 'secret');
 			symlinkSync(join(dir, 'secret.txt'), join(root, 'link.txt'));
+			writeFileSync(join(dir, 'out.html'), 'a sibling of the root');
+			const canonical = realpathSync(root);
 			const rel = (p: string) => {
 				const r = resolveStatic(root, p);
-				return typeof r === 'string' && r !== 'forbidden' ? r.slice(root.length) : r;
+				return typeof r === 'string' && r !== 'forbidden' ? r.slice(canonical.length) : r;
 			};
 			assert.equal(rel('/'), '/index.html');
 			assert.equal(rel('/docs'), '/docs.html');

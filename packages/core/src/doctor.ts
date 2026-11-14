@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { autonomyEntry } from './autonomy.ts';
 import { effectiveDeny, loadConfig } from './config.ts';
 import { FileLedger, LEDGER_FILE, SETTLED, experimentStates } from './ledger.ts';
 import type { Diagnostic, LabConfig, LedgerEvent } from './types.ts';
@@ -31,6 +32,11 @@ export async function doctor(path: string): Promise<DoctorReport> {
 					message: `${experiment} stopped at \`${state}\`. The next run resumes it or aborts it.`,
 				});
 			}
+		}
+	}
+	if (loaded.config?.autonomy === 'auto' && ledgerDiagnostics.length === 0) {
+		for (const check of autonomyEntry(events).checks) {
+			if (!check.met) diagnostics.push({ code: `autonomy-entry-${check.id}`, severity: 'warning', path: 'autonomy', message: check.detail });
 		}
 	}
 	return {

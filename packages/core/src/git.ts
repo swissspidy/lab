@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { parsePatch } from './patch.ts';
 import { StageError } from './types.ts';
 
 /**
@@ -38,6 +39,9 @@ export function gitPromote(dir: string, variant: { experiment: string; patch: st
 	} catch (error) {
 		throw new StageError('promote-apply-failed', `The patch for ${variant.experiment} no longer applies: ${(error as { stderr?: Buffer }).stderr?.toString().trim() ?? String(error)}`);
 	}
-	git(['commit', '-q', '-m', message ?? `lab: keep ${variant.experiment}`]);
+	// Commit only the variant's own paths: anything else staged (the ledger,
+	// say) stays staged and out of this commit.
+	const paths = [...new Set(parsePatch(variant.patch).files.flatMap((f) => [f.from, f.to]).filter((p): p is string => p !== null))];
+	git(['commit', '-q', '-m', message ?? `lab: keep ${variant.experiment}`, '--', ...paths]);
 	return git(['rev-parse', 'HEAD']);
 }

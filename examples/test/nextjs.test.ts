@@ -10,10 +10,10 @@ import assert from 'node:assert/strict';
 import { checkLedger } from '@lab/core';
 import { runNextLoop } from '../run-nextjs.ts';
 
-describe('Next.js example, full loop (M4)', () => {
-	it('verifies, ships after approval, measures, keeps the winners, reverts the loser, rejects the breakage', { timeout: 900_000 }, async () => {
+describe('Next.js example: full loop (M4), then an unattended week (M5)', () => {
+	it('verifies, ships after approval, measures, keeps the winners, reverts the loser, rejects the breakage; then runs a week by itself', { timeout: 1_800_000 }, async () => {
 		const out = mkdtempSync(join(tmpdir(), 'lab-nextjs-report-'));
-		const result = await runNextLoop({ out, log: () => {} });
+		const result = await runNextLoop({ out, log: () => {}, week: true });
 		try {
 			assert.deepEqual(checkLedger(result.events), []);
 			assert.deepEqual(result.outcomes, { 'exp-0001': 'kept', 'exp-0002': 'kept', 'exp-0003': 'reverted', 'exp-0004': 'verify_failed' });
@@ -39,9 +39,22 @@ describe('Next.js example, full loop (M4)', () => {
 			// The injected beacon works on the hydrated Next.js page.
 			assert.ok(result.browserConversions >= 3, `${result.browserConversions} conversions from 4 browser visits`);
 
-			const html = readFileSync(join(out, 'index.html'), 'utf8');
-			assert.ok(html.includes('2 kept, 1 reverted, 1 rejected by verification'));
+			assert.ok(existsSync(join(out, 'index.html')));
 			assert.ok(existsSync(join(out, 'ledger.jsonl')));
+
+			// M5: the kill switch was tested on the site, the entry criteria held, and
+			// a week ran with no approval but the lab's own.
+			const week = result.week!;
+			assert.equal(week.variantAfterKill, 0);
+			assert.equal(result.events.find((e) => e.experiment === 'exp-0005' && e.type === 'reverted')?.payload.reason, 'kill');
+			assert.equal(week.entryMet, true);
+			assert.equal(week.manualApprovals, 0);
+			assert.equal(week.outcomes['exp-0006'], 'kept');
+			assert.equal(week.outcomes['exp-0007'], 'verify_failed');
+			assert.notEqual(week.outcomes['exp-0008'], 'kept', 'a variant with no effect must not be kept within a week');
+			assert.match(execFileSync('git', ['log', '--format=%s'], { cwd: result.repo }).toString(), /lab: keep exp-0006/);
+			assert.match(week.markdown, /Approvals by anyone but the lab: 0\./);
+			assert.ok(existsSync(join(out, 'WEEK-ONE.md')));
 		} finally {
 			result.cleanup();
 			rmSync(out, { recursive: true, force: true });

@@ -85,7 +85,7 @@ async function assertion(page: Page, a: Assertion, viewport: { width: number; he
 		}
 		case 'url': {
 			// Client-side routers navigate asynchronously: wait for it, as for the other assertions.
-			const ok = await page.waitForURL((u) => u.href.endsWith(a.endsWith), { timeout: WAIT_MS }).then(() => true, () => false);
+			const ok = await page.waitForURL((u) => u.href.endsWith(a.endsWith), { timeout: WAIT_MS, waitUntil: 'commit' }).then(() => true, () => false);
 			return ok ? null : `The page is ${page.url()}, expected it to end with ${a.endsWith}.`;
 		}
 	}
