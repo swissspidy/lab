@@ -108,7 +108,13 @@ export function createEdgeHandler(options: EdgeOptions): (req: IncomingMessage, 
 		const base = bucket === 'variant' && state.live ? join(root, 'variants', state.live.experiment) : join(root, 'current');
 		if (!existsSync(base)) return void res.writeHead(503).end('Nothing is published.');
 		const dir = realpathSync(base);
-		let file = normalize(join(dir, decodeURIComponent(url.pathname)));
+		let path: string;
+		try {
+			path = decodeURIComponent(url.pathname);
+		} catch {
+			return void res.writeHead(400, headers).end('Bad request');
+		}
+		let file = normalize(join(dir, path));
 		if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
 		if (!existsSync(file)) return void res.writeHead(404, headers).end('Not found');
 		const real = realpathSync(file);

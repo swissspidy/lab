@@ -88,6 +88,9 @@ describe('reference host', () => {
 			assert.ok(res.status === 404 || res.status === 403, `${path} answered ${res.status}`);
 		}
 		assert.equal((await fetch(edge.url + '_lab/beacon', { method: 'POST', body: '{"e":"exp-0042","b":"variant","k":"purchase"}' })).status, 400);
+		// A malformed path is a bad request, not a crashed host.
+		assert.equal((await fetch(edge.url + '%E0%A4%A')).status, 400);
+		assert.equal((await fetch(edge.url + 'index.html')).status, 200);
 	});
 
 	it('the kill switch sends every visitor to the baseline at once, without a deploy', async () => {
