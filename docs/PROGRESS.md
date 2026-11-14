@@ -1,5 +1,59 @@
 # Progress
 
+## M2: Real proposer and builder (2026-11-14)
+
+**Built**
+
+- `ModelProvider`, with one real implementation, `AnthropicProvider`. It
+  uses the official SDK, `claude-opus-5-5` by default (`LAB_MODEL`
+  overrides), effort `high` and server-side refusal fallbacks. A refusal from
+  the whole chain, a truncated answer, bad credentials or rate limits become
+  named stage errors.
+- `ScriptedProvider` for tests: answers from a script per request kind, and
+  records every request.
+- `ModelProposer`: shows the model the config, the viewports, the ledger
+  history (each experiment's intent, last state and failed checks) and the
+  site's text files, each fenced as `<site_file>` data and marked editable
+  or not. Invariants and the ledger are never shown. The proposer assigns
+  the id itself, validates the answer with `validateSpec` and, when it is
+  refused, sends the diagnostics back (three attempts).
+- `ModelBuilder`: the model answers with search-and-replace edits, not a
+  diff. The builder refuses edits to paths outside `allow` or inside the
+  deny list before touching anything, requires each search to match exactly
+  once, applies the edits to a scratch copy and lets git write the patch.
+  Refusals go back to the model (three attempts). The orchestrator still
+  checks the resulting patch itself.
+- `lab run --dry [--iterations n]` without `--experiment` uses the model.
+- The scope checker, patch caps and factual-claims check that the brief puts
+  in M2 already shipped in M1.
+
+**Verified**
+
+- Acceptance (`fixtures/test/agent-loop.test.ts`), ten iterations with a
+  scripted provider, on a ledger seeded with a reverted experiment:
+  - every iteration leaves a valid ledger with every experiment settled;
+  - no patch touches a denied path; the builder refused three attempts to
+    edit `lab/invariants/pricing.ts` and `package.json`, and the iteration
+    aborted;
+  - the repeat of the reverted experiment was refused and the model's
+    second proposal was used instead;
+  - two variants fix the planted flaws (Docs in the main navigation, Get
+    started above the fold at 1280x800) and pass Verify;
+  - a price change and a contrast change were proposed, built and rejected
+    by Verify (`static.claims-numbers`, `budgets.axe`);
+  - unreadable answers, an unchecked criterion and edits whose search did
+    not match were sent back to the model with the reason.
+- Unit tests for JSON extraction, id assignment, history summaries, the
+  envelope escape, and the provider's request (model, fallbacks) and its
+  refusal and truncation errors, against a fake client.
+
+**Not verified**
+
+- No real model has run the loop: this session has no API key. The scripted
+  answers show the plumbing and the guardrails hold, not that Claude
+  proposes good experiments. Run `npm run lab -- run --dry fixtures/site --iterations 10`
+  with a key to see that, and record the result here.
+
 ## M1: Dry loop with a scripted proposer (2026-11-14)
 
 **Built**

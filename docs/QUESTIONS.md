@@ -28,3 +28,7 @@ conservative choice the lab took meanwhile.
    agent-written code ever runs. If a criterion cannot be expressed in that
    vocabulary, the spec is refused. The vocabulary grows when a real
    criterion needs it.
+7. **Model budget.** The brief's open question on a budget ceiling per
+   iteration is still open. Meanwhile an iteration makes at most six model
+   calls (three to propose, three to build) at effort `high`, and the site
+   context is capped at 400 KB of text.
