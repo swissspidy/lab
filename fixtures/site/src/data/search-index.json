@@ -1,0 +1,6 @@
+[
+	{ "title": "Quick start", "url": "docs.html#quick-start", "text": "build run kestrel output directory npx install" },
+	{ "title": "Configuration", "url": "docs.html#configuration", "text": "options kestrel.json config settings" },
+	{ "title": "Running in CI", "url": "docs.html#ci", "text": "ci exit code fail job github actions pipeline" },
+	{ "title": "Pricing", "url": "pricing.html", "text": "plans price free team chf cost" }
+]

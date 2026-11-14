@@ -1,0 +1,23 @@
+{
+	"$comment": "The site's components, each with a schema for its data. Only the lab reads this in v0; v1 morphs compose pages from it.",
+	"components": {
+		"header": { "file": "components/header.html", "schema": { "type": "object", "additionalProperties": false, "properties": {} } },
+		"search": { "file": "components/search.html", "schema": { "type": "object", "additionalProperties": false, "properties": {} } },
+		"install": {
+			"file": "components/install.html",
+			"schema": { "type": "object", "required": ["command"], "additionalProperties": false, "properties": { "command": { "type": "string" } } }
+		},
+		"signup": { "file": "components/signup.html", "protected": true, "schema": { "type": "object", "additionalProperties": false, "properties": {} } },
+		"footer": { "file": "components/footer.html", "schema": { "type": "object", "additionalProperties": false, "properties": {} } },
+		"plan": {
+			"file": "pages/pricing.html",
+			"protected": true,
+			"schema": {
+				"type": "object",
+				"required": ["name", "price"],
+				"additionalProperties": false,
+				"properties": { "name": { "type": "string" }, "price": { "type": "string" } }
+			}
+		}
+	}
+}

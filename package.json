@@ -1,0 +1,28 @@
+{
+	"name": "lab",
+	"version": "0.0.0",
+	"private": true,
+	"description": "An open-source loop that lets an agent improve a live website, and never ships a change that has not been verified.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"engines": {
+		"node": ">=22.18"
+	},
+	"workspaces": [
+		"packages/*"
+	],
+	"scripts": {
+		"lab": "node packages/cli/src/index.ts",
+		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"lint": "oxlint --deny-warnings",
+		"test": "node --test --test-reporter=spec \"packages/*/test/*.test.ts\" \"fixtures/test/*.test.ts\"",
+		"check": "npm run lint && npm run typecheck && npm test"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"axe-core": "^4.14.0",
+		"oxlint": "^1.93.0",
+		"playwright": "^1.63.0",
+		"typescript": "^7.0.2"
+	}
+}

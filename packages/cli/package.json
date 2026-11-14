@@ -1,0 +1,14 @@
+{
+	"name": "@lab/cli",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The lab command line.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"bin": {
+		"lab": "./src/index.ts"
+	},
+	"dependencies": {
+		"@lab/core": "0.0.0"
+	}
+}
