@@ -1,0 +1,30 @@
+{
+	"id": "brk-misses-acceptance",
+	"hypothesis": "A plausible-looking change that breaks the site.",
+	"intent": "Rename the features heading.",
+	"acceptance": [
+		"Get started is visible without scrolling at 1280x800."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"viewport": {
+				"width": 1280,
+				"height": 800
+			},
+			"expect": [
+				{
+					"expect": "in-viewport",
+					"target": {
+						"role": "link",
+						"name": "Get started"
+					}
+				}
+			]
+		}
+	]
+}

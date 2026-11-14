@@ -1,0 +1,9 @@
+diff --git a/src/pages/index.html b/src/pages/index.html
+index 1111111..2222222 100644
+--- a/src/pages/index.html
++++ b/src/pages/index.html
+@@ -10,3 +10,3 @@
+ 	<section class="hero">
+-		<h1>Find dead links before anyone else does</h1>
++		<h1>Find dead links first</h1>
+ 		<p>This line is not in the file.</p>

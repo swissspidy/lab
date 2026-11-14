@@ -1,0 +1,13 @@
+diff --git a/src/scripts/site.js b/src/scripts/site.js
+index e63adf8..3d50b30 100644
+--- a/src/scripts/site.js
++++ b/src/scripts/site.js
+@@ -11,7 +11,7 @@ if (search) {
+ 		const hits = index.filter((entry) => words.every((w) => `${entry.title} ${entry.text}`.toLowerCase().includes(w)));
+ 		results.replaceChildren();
+ 		if (hits.length === 0) {
+-			results.textContent = `No results for “${query}”.`;
++			results.textContent = `Nothing found for “${query}”.`;
+ 			return;
+ 		}
+ 		const list = document.createElement('ul');

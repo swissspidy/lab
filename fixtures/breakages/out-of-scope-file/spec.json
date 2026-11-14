@@ -1,0 +1,26 @@
+{
+	"id": "brk-out-of-scope-file",
+	"hypothesis": "A plausible-looking change that breaks the site.",
+	"intent": "Reword the empty search message.",
+	"acceptance": [
+		"The home page heading is visible."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "visible",
+					"target": {
+						"role": "heading",
+						"name": "Find broken links before your visitors do"
+					}
+				}
+			]
+		}
+	]
+}

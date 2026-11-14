@@ -1,0 +1,16 @@
+{
+	"name": "@lab/verify",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The built-in verifier: invariants, budgets, content claims and acceptance checks with Playwright and aXe.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@lab/core": "0.0.0",
+		"axe-core": "^4.10.0",
+		"playwright": "1.63.0"
+	}
+}

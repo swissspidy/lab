@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index a04cc06..6eb296a 100644
+--- a/package.json
++++ b/package.json
+@@ -5,5 +5,8 @@
+ 	"type": "module",
+ 	"scripts": {
+ 		"build": "node build.mjs"
++	},
++	"dependencies": {
++		"left-pad": "1.3.0"
+ 	}
+ }

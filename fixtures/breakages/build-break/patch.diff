@@ -1,0 +1,13 @@
+diff --git a/src/pages/index.html b/src/pages/index.html
+index b0840cd..1d2d4ca 100644
+--- a/src/pages/index.html
++++ b/src/pages/index.html
+@@ -21,7 +21,7 @@
+ 		</ul>
+ 	</section>
+ 	<!-- component:install -->
+-	<!-- component:signup -->
++	<!-- component:newsletter -->
+ </main>
+ <!-- component:footer -->
+ </body>

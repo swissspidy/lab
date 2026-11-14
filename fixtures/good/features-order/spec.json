@@ -1,0 +1,28 @@
+{
+	"id": "good-features-order",
+	"hypothesis": "Teams care most about CI speed, so leading with the link cache draws them in.",
+	"intent": "List the external link cache first among the features.",
+	"acceptance": [
+		"The first feature listed is the external link cache."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"src/pages/index.html"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "text",
+					"target": {
+						"css": ".features li"
+					},
+					"equals": "External links, with a cache so CI stays fast"
+				}
+			]
+		}
+	]
+}

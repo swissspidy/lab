@@ -1,0 +1,20 @@
+diff --git a/src/pages/index.html b/src/pages/index.html
+index b0840cd..79d532b 100644
+--- a/src/pages/index.html
++++ b/src/pages/index.html
+@@ -10,6 +10,7 @@
+ 	<section class="hero">
+ 		<h1>Find broken links before your visitors do</h1>
+ 		<p>Kestrel crawls your built site and fails the build when a link, image or anchor is broken.</p>
++		<!-- component:install -->
+ 		<div class="hero-art" role="img" aria-label="A kestrel hovering over a map of linked pages"></div>
+ 	</section>
+ 	<section class="features" aria-labelledby="features-title">
+@@ -20,7 +21,6 @@
+ 			<li>External links, with a cache so CI stays fast</li>
+ 		</ul>
+ 	</section>
+-	<!-- component:install -->
+ 	<!-- component:signup -->
+ </main>
+ <!-- component:footer -->

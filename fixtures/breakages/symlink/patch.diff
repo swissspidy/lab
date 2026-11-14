@@ -1,0 +1,8 @@
+diff --git a/src/styles/package.css b/src/styles/package.css
+new file mode 120000
+index 0000000..138a42c
+--- /dev/null
++++ b/src/styles/package.css
+@@ -0,0 +1 @@
++../../package.json
+\ No newline at end of file

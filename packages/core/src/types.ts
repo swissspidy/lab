@@ -17,6 +17,47 @@ export interface ExperimentSpec {
 	/** Paths the change is expected to touch. The scope check reads the patch, not this list. */
 	touches: string[];
 	source: HypothesisSource;
+	/**
+	 * Checks for the acceptance criteria, written with the spec, before the
+	 * variant exists. Data, not code: the verifier interprets them, so a
+	 * proposer never runs code of its own. Every criterion needs at least one.
+	 */
+	checks: AcceptanceCheck[];
+}
+
+/** How a check finds an element. The first match counts. */
+export type Target =
+	| { role: string; name?: string; exact?: boolean }
+	| { label: string }
+	| { text: string; exact?: boolean }
+	| { css: string };
+
+export type Step =
+	| { do: 'click'; target: Target }
+	| { do: 'fill'; target: Target; value: string }
+	| { do: 'press'; target: Target; key: string }
+	| { do: 'goto'; page: string };
+
+export type Assertion =
+	| { expect: 'visible'; target: Target }
+	| { expect: 'hidden'; target: Target }
+	/** Fully inside the viewport without scrolling. */
+	| { expect: 'in-viewport'; target: Target }
+	| { expect: 'text'; target: Target; equals?: string; contains?: string }
+	| { expect: 'count'; target: Target; equals: number }
+	| { expect: 'attribute'; target: Target; name: string; equals: string }
+	| { expect: 'clipboard'; equals: string }
+	| { expect: 'url'; endsWith: string };
+
+export interface AcceptanceCheck {
+	/** Index into `acceptance`. */
+	criterion: number;
+	/** A page of the built site, such as `index.html`. */
+	page: string;
+	/** Defaults to the config's first viewport. */
+	viewport?: { width: number; height: number };
+	steps?: Step[];
+	expect: Assertion[];
 }
 
 /** A site at a commit, checked out in a working directory. */
@@ -37,6 +78,8 @@ export interface Variant {
 
 export interface RunningSite {
 	url: string;
+	/** The built output on disk, when the sandbox has one. Static gates read it. */
+	root?: string;
 	stop(): Promise<void>;
 }
 
@@ -66,9 +109,35 @@ export interface CheckResult {
 	evidence?: CheckEvidence;
 }
 
+export interface VerifyInput {
+	baseline: RunningSite;
+	variant: RunningSite;
+	spec: ExperimentSpec;
+	/** Where to write screenshots and traces. */
+	evidenceDir: string;
+}
+
 export interface VerifyReport {
+	/** True only when the baseline passed and every variant check passed. */
 	passed: boolean;
+	/** False means the suite fails on the baseline too: abort, don't blame the variant. */
+	baselinePassed: boolean;
+	/** Variant results, one per check id. */
 	results: CheckResult[];
+	/** Baseline results, gate `baseline`, one per check id. */
+	baselineResults: CheckResult[];
+}
+
+/** A stage failed in a way it can name. `code` is stable. */
+export class StageError extends Error {
+	readonly code: string;
+	readonly detail: string | undefined;
+	constructor(code: string, message: string, detail?: string) {
+		super(message);
+		this.name = 'StageError';
+		this.code = code;
+		this.detail = detail;
+	}
 }
 
 export interface BucketCounts {
@@ -93,7 +162,8 @@ export type Decision =
 export type Autonomy = 'propose-only' | 'gated' | 'auto';
 
 export interface LabConfig {
-	site: { repo: string; build: string; outDir: string };
+	/** `check` is an optional lint and type check command, run before `build`. */
+	site: { repo: string; build: string; outDir: string; check?: string };
 	metric: { id: string; kind: 'conversion' };
 	guardrailMetrics: string[];
 	allow: string[];
@@ -168,7 +238,7 @@ export interface Sandbox {
 }
 
 export interface Verifier {
-	verify(site: RunningSite, spec: ExperimentSpec): Promise<VerifyReport>;
+	verify(input: VerifyInput): Promise<VerifyReport>;
 }
 
 export interface Deployer {

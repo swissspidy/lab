@@ -1,0 +1,12 @@
+diff --git a/src/pages/index.html b/src/pages/index.html
+index b0840cd..f9f4686 100644
+--- a/src/pages/index.html
++++ b/src/pages/index.html
+@@ -5,6 +5,7 @@
+ <title>Kestrel: find broken links before your visitors do</title>
+ </head>
+ <body>
++<script>setTimeout(() => { const d = document.createElement("div"); d.style.height = "300px"; document.body.prepend(d); }, 300);</script>
+ <!-- component:header -->
+ <main>
+ 	<section class="hero">

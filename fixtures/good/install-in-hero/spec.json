@@ -1,0 +1,67 @@
+{
+	"id": "good-install-in-hero",
+	"hypothesis": "Visitors miss the install command because it sits below the fold.",
+	"intent": "Move the install section into the hero, above the illustration.",
+	"acceptance": [
+		"The install command is visible without scrolling at 1280x800 and 390x844.",
+		"The copy button copies the exact command text."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"src/pages/index.html"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"viewport": {
+				"width": 1280,
+				"height": 800
+			},
+			"expect": [
+				{
+					"expect": "in-viewport",
+					"target": {
+						"css": "[data-install-command]"
+					}
+				}
+			]
+		},
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"viewport": {
+				"width": 390,
+				"height": 844
+			},
+			"expect": [
+				{
+					"expect": "in-viewport",
+					"target": {
+						"css": "[data-install-command]"
+					}
+				}
+			]
+		},
+		{
+			"criterion": 1,
+			"page": "index.html",
+			"steps": [
+				{
+					"do": "click",
+					"target": {
+						"role": "button",
+						"name": "Copy"
+					}
+				}
+			],
+			"expect": [
+				{
+					"expect": "clipboard",
+					"equals": "npm install --save-dev kestrel-links"
+				}
+			]
+		}
+	]
+}

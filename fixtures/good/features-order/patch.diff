@@ -1,0 +1,15 @@
+diff --git a/src/pages/index.html b/src/pages/index.html
+index b0840cd..9feb1ae 100644
+--- a/src/pages/index.html
++++ b/src/pages/index.html
+@@ -15,9 +15,9 @@
+ 	<section class="features" aria-labelledby="features-title">
+ 		<h2 id="features-title">What it checks</h2>
+ 		<ul>
++			<li>External links, with a cache so CI stays fast</li>
+ 			<li>Internal links and anchors</li>
+ 			<li>Images and their alt text</li>
+-			<li>External links, with a cache so CI stays fast</li>
+ 		</ul>
+ 	</section>
+ 	<!-- component:install -->

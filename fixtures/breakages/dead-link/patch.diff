@@ -1,0 +1,13 @@
+diff --git a/src/components/footer.html b/src/components/footer.html
+index edcfc91..bcb45f7 100644
+--- a/src/components/footer.html
++++ b/src/components/footer.html
+@@ -1,7 +1,7 @@
+ <footer class="site-footer">
+ 	<nav aria-label="Footer">
+ 		<ul>
+-			<li><a href="docs.html" data-lab-event="next_step_click">Documentation</a></li>
++			<li><a href="documentation.html" data-lab-event="next_step_click">Documentation</a></li>
+ 			<li><a href="pricing.html">Pricing</a></li>
+ 		</ul>
+ 	</nav>

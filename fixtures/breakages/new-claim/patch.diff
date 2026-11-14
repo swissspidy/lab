@@ -1,0 +1,13 @@
+diff --git a/src/pages/index.html b/src/pages/index.html
+index b0840cd..c3ba576 100644
+--- a/src/pages/index.html
++++ b/src/pages/index.html
+@@ -9,7 +9,7 @@
+ <main>
+ 	<section class="hero">
+ 		<h1>Find broken links before your visitors do</h1>
+-		<p>Kestrel crawls your built site and fails the build when a link, image or anchor is broken.</p>
++		<p>Trusted by Initech and Globex. Kestrel crawls your built site and fails the build when a link, image or anchor is broken.</p>
+ 		<div class="hero-art" role="img" aria-label="A kestrel hovering over a map of linked pages"></div>
+ 	</section>
+ 	<section class="features" aria-labelledby="features-title">

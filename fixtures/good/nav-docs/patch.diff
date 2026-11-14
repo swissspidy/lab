@@ -1,0 +1,12 @@
+diff --git a/src/components/header.html b/src/components/header.html
+index 3d74cf8..c53acd2 100644
+--- a/src/components/header.html
++++ b/src/components/header.html
+@@ -3,6 +3,7 @@
+ 	<nav aria-label="Main">
+ 		<ul>
+ 			<li><a href="index.html">Home</a></li>
++			<li><a href="docs.html" data-lab-event="next_step_click">Docs</a></li>
+ 			<li><a href="pricing.html">Pricing</a></li>
+ 		</ul>
+ 	</nav>

@@ -1,0 +1,14 @@
+{
+	"name": "@lab/sandbox",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The built-in sandbox: build a site or a patched variant in a scratch directory and serve it on loopback.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@lab/core": "0.0.0"
+	}
+}

@@ -15,5 +15,5 @@
 		"erasableSyntaxOnly": true,
 		"noEmit": true
 	},
-	"include": ["packages/*/src", "packages/*/test", "fixtures/test", "fixtures/site/lab.config.ts"]
+	"include": ["packages/*/src", "packages/*/test", "fixtures/test", "fixtures/site/lab.config.ts", "fixtures/site/lab/invariants"]
 }
