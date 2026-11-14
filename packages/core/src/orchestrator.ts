@@ -1,5 +1,6 @@
-// The loop. Deterministic code: only the Proposer and Builder may call a
-// model, and only this file calls the Deployer, after Verify passes.
+// One iteration of the loop, from Observe to Verify. Deterministic code:
+// only the Proposer and Builder may call a model. It never ships; see
+// lifecycle.ts for what happens after Verify.
 import { join } from 'node:path';
 import { checkPatch, hashPatch } from './patch.ts';
 import { validateSpec } from './spec.ts';
@@ -17,8 +18,6 @@ export interface IterationDeps {
 	/** Root for evidence; each experiment gets a subdirectory. */
 	evidenceDir: string;
 	baseline?: BucketStats | null;
-	/** Stop after Verify. Always true until Ship exists (M3). */
-	dry: boolean;
 }
 
 export type IterationOutcome = 'verify_passed' | 'verify_failed' | 'aborted';
@@ -43,9 +42,6 @@ function describe(error: unknown): { code: string; message: string; detail?: str
 /** One pass through the loop, from Observe to Verify. Every step lands in the ledger. */
 export async function runIteration(deps: IterationDeps): Promise<IterationResult> {
 	const { config, site, ledger } = deps;
-	if (!deps.dry) {
-		throw new StageError('ship-unavailable', 'Ship, Measure and Decide arrive in M3. Run with --dry.');
-	}
 	const events: LedgerEvent[] = [];
 	const append = async (event: Parameters<Ledger['append']>[0]) => {
 		const written = await ledger.append(event);
@@ -96,7 +92,7 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 	}
 	const patchHash = hashPatch(variant.patch);
 	const base = { experiment: spec.id, siteCommit: site.commit, patchHash };
-	await append({ ...base, type: 'built', payload: { lines: variant.patch.split('\n').length } });
+	await append({ ...base, type: 'built', payload: { patch: variant.patch } });
 
 	// Static patch gate: the orchestrator reads the patch itself.
 	const staticResults = checkPatch(variant.patch, config);

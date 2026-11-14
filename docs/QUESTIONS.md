@@ -32,3 +32,10 @@ conservative choice the lab took meanwhile.
    iteration is still open. Meanwhile an iteration makes at most six model
    calls (three to propose, three to build) at effort `high`, and the site
    context is capped at 400 KB of text.
+8. **Peeking.** The brief's rule (keep at P ≥ 0.95, evaluated daily) keeps
+   about 15% of null variants in simulation. I kept the rule as written and
+   documented the rate. A sequential test, or a stricter keep threshold,
+   would lower it. Your call.
+9. **Guardrail sensitivity.** A guardrail needs the margin and a z-score set
+   so that chance trips one less than 5% of the time over `maxDays`. Without
+   the z-score, noisy 6-hour windows reverted good variants.

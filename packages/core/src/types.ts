@@ -142,15 +142,32 @@ export class StageError extends Error {
 
 export interface BucketCounts {
 	visits: number;
+	/** Visits with the primary metric. */
 	conversions: number;
+	/** Visits with at least one uncaught script error. */
+	jsErrors: number;
+	/** Visits with any interaction. Bounce is 1 - engaged / visits. */
+	engaged: number;
 }
 
 export interface BucketStats {
 	experiment: string;
+	/** Totals since the experiment shipped. */
 	baseline: BucketCounts;
 	variant: BucketCounts;
+	/** The most recent measurement interval alone, so a sudden failure is not diluted by history. */
+	latest: { baseline: BucketCounts; variant: BucketCounts } | null;
 	/** Guardrail metric id → whether it degraded past its threshold. */
 	guardrails: Record<string, { degraded: boolean; detail?: string }>;
+	/** Days since the experiment shipped. */
+	days: number;
+}
+
+/** Site-wide traffic, to check an experiment can reach its sample size before it ships. */
+export interface TrafficEstimate {
+	dailyVisits: number;
+	conversionRate: number;
+	/** Days of data behind the estimate. */
 	days: number;
 }
 
@@ -170,7 +187,17 @@ export interface LabConfig {
 	deny: string[];
 	invariants: string;
 	budgets: { lcpMs: number; cls: number; axeViolations: number; bundleKbDelta: number };
-	traffic: { share: number; minSamplesPerBucket: number; maxDays: number };
+	traffic: {
+		share: number;
+		minSamplesPerBucket: number;
+		maxDays: number;
+		/** How often Measure runs and guardrails are checked. The decision rule runs once a day. */
+		intervalHours: number;
+		/** The relative lift the sample size is planned for: 0.2 means 10% to 12%. */
+		minDetectableEffect: number;
+	};
+	/** When a guardrail counts as degraded, in absolute rate differences. */
+	rollback: { jsErrorMargin: number; bounceMargin: number; minVisits: number };
 	limits: { maxChangedLines: number; maxFiles: number };
 	viewports: Array<{ width: number; height: number }>;
 	autonomy: Autonomy;
@@ -243,16 +270,22 @@ export interface Verifier {
 
 export interface Deployer {
 	ship(variant: Variant, share: number): Promise<void>;
+	/** Stops serving the variant. Takes effect without a deploy. */
 	rollback(experiment: string): Promise<void>;
+	/** Serves the variant to everyone. */
 	promote(experiment: string): Promise<void>;
+	/** The kill switch: every variant share to 0, now, whatever the ledger says. */
+	kill(): Promise<void>;
 }
 
 export interface Meter {
 	read(experiment: string): Promise<BucketStats>;
+	traffic(): Promise<TrafficEstimate>;
 }
 
 export interface Decider {
-	decide(stats: BucketStats, spec: ExperimentSpec): Decision;
+	/** `requiredPerBucket` is the sample size planned when the experiment shipped. */
+	decide(stats: BucketStats, spec: ExperimentSpec, plan?: { requiredPerBucket: number }): Decision;
 }
 
 export interface Ledger {

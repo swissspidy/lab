@@ -12,9 +12,14 @@ append-only ledger in the site's repository.
 
 ## Kill switch
 
-`lab kill` will set the variant share to 0% without a deploy. It arrives in
-M3, before the lab serves any variant to visitors. Until then the lab ships
-nothing.
+```sh
+npm run lab -- kill path/to/site
+```
+
+Every variant share goes to 0% at once, without a build or a deploy: the
+edge reads the host state on each request. It works even when the config or
+the ledger is broken; it records the kill in the ledger afterwards when it
+can.
 
 ## Try it in two minutes
 
@@ -34,8 +39,10 @@ ends in `verify_passed`. The second changes a price and ends in
 
 ## Status
 
-M2 of six milestones is done: the dry loop runs from a proposal, written by
-Claude or replayed from disk, to a verdict. See [docs/PROGRESS.md](docs/PROGRESS.md).
+M3 of six milestones is done: the loop ships a verified, approved variant to
+a share of traffic, measures it and keeps or reverts it, on simulated
+traffic. It has not run on a real site yet (M4). See
+[docs/PROGRESS.md](docs/PROGRESS.md).
 
 With a key (`ANTHROPIC_API_KEY`, or `ant auth login`), let the model propose
 and build:
@@ -43,6 +50,47 @@ and build:
 ```sh
 npm run lab -- run --dry fixtures/site --iterations 3
 ```
+
+## The full loop
+
+Run `lab run` from a scheduler once per measurement interval. Each run does
+one step:
+
+1. If an experiment is live, measure it: roll it back at once if a guardrail
+   degraded; once a day, apply the decision rule and keep, revert or keep
+   running.
+2. Otherwise, if an experiment is approved, ship it to `traffic.share` of
+   visitors, unless the site's traffic cannot reach the planned sample size
+   within `traffic.maxDays`.
+3. Otherwise, if an experiment passed Verify, wait for `lab approve <id>`.
+4. Otherwise, start a new iteration: propose, build, verify.
+
+`lab status` shows where things stand. The reference host (`lab publish`,
+`lab serve`) serves the baseline and the variant, buckets visitors with a
+random first-party id that carries nothing else, and counts visits,
+conversions, errors and engagement per bucket and interval, never per
+visitor.
+
+### Decision rule
+
+Beta-Binomial posteriors on each bucket's conversion rate:
+
+- keep when P(variant beats baseline) ≥ 0.95, both buckets reached the
+  sample size planned at ship time, and no guardrail degraded;
+- revert when P ≤ 0.05 (after `minSamplesPerBucket`), when a guardrail
+  degrades, or when `maxDays` passes;
+- otherwise keep running.
+
+Guardrails (`js_error_rate`, `bounce`) degrade when the variant is worse than
+the baseline by more than the margin in `rollback` and by enough standard
+errors that chance alone trips one less than 5% of the time over the whole
+experiment. They are checked every interval, on that interval alone and on
+the totals.
+
+**Peeking.** The rule is evaluated once a day, not continuously, and the
+daily looks are not corrected for. In simulation, a variant with no true
+effect is kept about 15% of the time (3 of 20). A sequential test would fix
+this; it is a later improvement.
 
 ## Verification
 

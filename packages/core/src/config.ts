@@ -29,7 +29,13 @@ export const DEFAULTS = {
 		{ width: 390, height: 844 },
 	],
 	autonomy: 'gated' as const,
+	intervalHours: 24,
+	minDetectableEffect: 0.2,
+	rollback: { jsErrorMargin: 0.02, bounceMargin: 0.1, minVisits: 100 },
 };
+
+/** The guardrail metrics the reference meter can measure. */
+export const GUARDRAIL_METRICS = ['js_error_rate', 'bounce'] as const;
 
 /** The largest variant share v0 allows. The variant stays the minority. */
 export const MAX_SHARE = 0.5;
@@ -68,7 +74,8 @@ export function validateConfig(raw: unknown): ConfigResult {
 		deny: 'string[]',
 		invariants: 'string',
 		budgets: { lcpMs: 'number', cls: 'number', axeViolations: 'number', bundleKbDelta: 'number' },
-		traffic: { share: 'number', minSamplesPerBucket: 'number', maxDays: 'number' },
+		traffic: { share: 'number', minSamplesPerBucket: 'number', maxDays: 'number', intervalHours: 'number?', minDetectableEffect: 'number?' },
+		rollback: { jsErrorMargin: 'number?', bounceMargin: 'number?', minVisits: 'number?' },
 		limits: { maxChangedLines: 'number', maxFiles: 'number' },
 		viewports: 'viewport[]',
 		autonomy: 'string',
@@ -144,6 +151,7 @@ export function validateConfig(raw: unknown): ConfigResult {
 		return { config: null, diagnostics };
 	}
 
+	const rawTraffic = raw.traffic as Raw;
 	const config = {
 		guardrailMetrics: DEFAULTS.guardrailMetrics,
 		invariants: DEFAULTS.invariants,
@@ -151,6 +159,8 @@ export function validateConfig(raw: unknown): ConfigResult {
 		viewports: DEFAULTS.viewports,
 		autonomy: DEFAULTS.autonomy,
 		...raw,
+		traffic: { intervalHours: DEFAULTS.intervalHours, minDetectableEffect: DEFAULTS.minDetectableEffect, ...rawTraffic },
+		rollback: { ...DEFAULTS.rollback, ...(isObject(raw.rollback) ? raw.rollback : {}) },
 	} as LabConfig;
 
 	// Value checks, now that the types are known to be right.
@@ -176,6 +186,23 @@ export function validateConfig(raw: unknown): ConfigResult {
 	}
 	if (!Number.isInteger(maxDays) || maxDays < 1 || maxDays > 90) {
 		error('config-traffic-days', 'traffic.maxDays', '`traffic.maxDays` must be a whole number from 1 to 90.');
+	}
+	const { intervalHours, minDetectableEffect } = config.traffic;
+	if (!(intervalHours > 0 && intervalHours <= 24 && 24 % intervalHours === 0)) {
+		error('config-traffic-interval', 'traffic.intervalHours', '`traffic.intervalHours` must divide a day: 1, 2, 3, 4, 6, 8, 12 or 24.');
+	}
+	if (!(minDetectableEffect > 0 && minDetectableEffect <= 1)) {
+		error('config-traffic-mde', 'traffic.minDetectableEffect', '`traffic.minDetectableEffect` must be a relative lift above 0 and at most 1.');
+	}
+	for (const [key, value] of Object.entries(config.rollback)) {
+		if (!(value >= 0) || (key !== 'minVisits' && value > 1) || (key === 'minVisits' && !Number.isInteger(value))) {
+			error('config-rollback', `rollback.${key}`, key === 'minVisits' ? '`rollback.minVisits` must be a whole number.' : `\`rollback.${key}\` must be a rate difference from 0 to 1.`);
+		}
+	}
+	for (const [i, metric] of config.guardrailMetrics.entries()) {
+		if (!(GUARDRAIL_METRICS as readonly string[]).includes(metric)) {
+			error('config-guardrail-unknown', `guardrailMetrics.${i}`, `\`${metric}\` is not a guardrail the lab measures. Use ${GUARDRAIL_METRICS.join(' or ')}.`);
+		}
 	}
 	const { lcpMs, cls, axeViolations, bundleKbDelta } = config.budgets;
 	for (const [path, value] of [

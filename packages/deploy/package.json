@@ -1,0 +1,14 @@
+{
+	"name": "@lab/deploy",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The reference deployer, edge function, beacon and meter.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@lab/core": "0.0.0"
+	}
+}

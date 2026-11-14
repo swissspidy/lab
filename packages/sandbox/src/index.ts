@@ -1,8 +1,4 @@
-import { spawn } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
-import { StageError } from '@lab/core';
+import { buildInScratch } from '@lab/core';
 import type { LabConfig, RepoRef, RunningSite, Sandbox, Variant } from '@lab/core';
 import { serveDir } from './serve.ts';
 
@@ -17,105 +13,36 @@ export interface LocalSandboxOptions {
 	scratch?: string;
 }
 
-/** Environment variables a build may see. Everything else, keys and tokens included, is dropped. */
-const PASS_ENV = ['PATH', 'HOME', 'LANG', 'TZ', 'TMPDIR', 'NODE_OPTIONS'];
-
-const isVariant = (ref: RepoRef | Variant): ref is Variant => 'patch' in ref;
-
-function run(command: string, cwd: string, timeoutMs: number): Promise<{ code: number | null; output: string; timedOut: boolean }> {
-	return new Promise((done) => {
-		const env: Record<string, string> = { CI: '1', NODE_ENV: 'production' };
-		for (const key of PASS_ENV) if (process.env[key]) env[key] = process.env[key]!;
-		const child = spawn('sh', ['-c', command], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
-		let output = '';
-		const collect = (chunk: Buffer) => {
-			output = (output + chunk.toString()).slice(-20_000);
-		};
-		child.stdout.on('data', collect);
-		child.stderr.on('data', collect);
-		let timedOut = false;
-		const timer = setTimeout(() => {
-			timedOut = true;
-			try {
-				process.kill(-child.pid!, 'SIGKILL');
-			} catch {
-				child.kill('SIGKILL');
-			}
-		}, timeoutMs);
-		child.on('close', (code) => {
-			clearTimeout(timer);
-			done({ code, output, timedOut });
-		});
-	});
-}
-
 /**
  * Builds a site, or a patched copy of it, in a scratch directory and serves
  * the output on 127.0.0.1. The site directory itself is never written to.
  */
 export class LocalSandbox implements Sandbox {
 	readonly config: LabConfig;
-	readonly timeoutMs: number;
-	readonly scratch: string;
+	readonly options: LocalSandboxOptions;
 
 	constructor(options: LocalSandboxOptions) {
 		this.config = options.config;
-		this.timeoutMs = options.timeoutMs ?? 120_000;
-		this.scratch = options.scratch ?? tmpdir();
+		this.options = options;
 	}
 
 	async start(ref: RepoRef | Variant): Promise<RunningSite> {
-		const base = isVariant(ref) ? ref.base : ref;
-		const source = resolve(base.dir);
-		const work = mkdtempSync(join(this.scratch, 'lab-sandbox-'));
-		const cleanup = () => rmSync(work, { recursive: true, force: true });
+		const build = await buildInScratch(ref, this.config, {
+			...(this.options.timeoutMs === undefined ? {} : { timeoutMs: this.options.timeoutMs }),
+			...(this.options.scratch === undefined ? {} : { scratch: this.options.scratch }),
+		});
 		try {
-			const outDir = resolve(work, this.config.site.outDir);
-			if (!outDir.startsWith(work + sep)) throw new StageError('sandbox-outdir', '`site.outDir` must be inside the site.');
-			const skip = new Set(['node_modules', '.git', this.config.site.outDir.replace(/\/+$/, '')]);
-			cpSync(source, work, {
-				recursive: true,
-				// Keep relative symlinks relative, so they cannot reach back into the site.
-				verbatimSymlinks: true,
-				filter: (src) => {
-					const rel = relative(source, src);
-					if (rel === '') return true;
-					const top = rel.split(sep)[0]!;
-					return !skip.has(rel) && !skip.has(top) && rel !== join('lab', 'ledger.jsonl') && !rel.startsWith(join('lab', 'evidence'));
-				},
-			});
-			// Dependencies are shared, read as they are: a variant may not change them.
-			if (existsSync(join(source, 'node_modules'))) symlinkSync(join(source, 'node_modules'), join(work, 'node_modules'));
-
-			if (isVariant(ref)) {
-				const patchFile = join(work, '.lab-variant.patch');
-				writeFileSync(patchFile, ref.patch.endsWith('\n') ? ref.patch : `${ref.patch}\n`);
-				const applied = await run('git apply --whitespace=nowarn .lab-variant.patch', work, this.timeoutMs);
-				rmSync(patchFile, { force: true });
-				if (applied.code !== 0) throw new StageError('sandbox-patch-failed', 'The patch does not apply to the base commit.', applied.output);
-			}
-			if (this.config.site.check) {
-				const checked = await run(this.config.site.check, work, this.timeoutMs);
-				if (checked.code !== 0) {
-					throw new StageError('sandbox-check-failed', checked.timedOut ? 'The check command timed out.' : `The check command failed with exit code ${checked.code}.`, checked.output);
-				}
-			}
-			const built = await run(this.config.site.build, work, this.timeoutMs);
-			if (built.code !== 0) {
-				throw new StageError('sandbox-build-failed', built.timedOut ? 'The build timed out.' : `The build failed with exit code ${built.code}.`, built.output);
-			}
-			if (!existsSync(outDir)) throw new StageError('sandbox-build-failed', `The build wrote no ${this.config.site.outDir}.`, built.output);
-			const server = await serveDir(outDir);
+			const server = await serveDir(build.outDir);
 			return {
 				url: server.url,
-				root: outDir,
+				root: build.outDir,
 				stop: async () => {
 					await server.close();
-					cleanup();
+					build.cleanup();
 				},
 			};
 		} catch (error) {
-			cleanup();
+			build.cleanup();
 			throw error;
 		}
 	}
