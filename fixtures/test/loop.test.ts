@@ -48,7 +48,6 @@ describe('dry loop (M1)', { concurrency: 3 }, () => {
 			sandbox: new LocalSandbox({ config, scratch }),
 			verifier: new BrowserVerifier({ config, siteDir: site, browser }),
 			evidenceDir: join(scratch, 'evidence'),
-			dry: true,
 		});
 		return { result, ledger };
 	}

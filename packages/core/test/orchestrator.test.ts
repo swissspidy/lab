@@ -58,7 +58,6 @@ describe('runIteration', () => {
 		},
 		verifier: { verify: async () => (verified++, over.verdict ?? report()) },
 		evidenceDir: join(dir, 'ev'),
-		dry: true,
 		...over,
 	});
 
@@ -121,9 +120,5 @@ describe('runIteration', () => {
 		const result = await runIteration(d);
 		assert.equal(result.outcome, 'aborted');
 		assert.equal((await d.ledger.history()).length, 0);
-	});
-
-	it('refuses to run without --dry until Ship exists', async () => {
-		await assert.rejects(runIteration(deps({ dry: false })), (e: unknown) => e instanceof StageError && e.code === 'ship-unavailable');
 	});
 });

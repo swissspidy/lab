@@ -121,7 +121,6 @@ describe('model-backed loop (M2)', () => {
 					sandbox: new LocalSandbox({ config, scratch }),
 					verifier: new BrowserVerifier({ config, siteDir: site, browser }),
 					evidenceDir: join(scratch, 'evidence'),
-					dry: true,
 				}),
 			);
 			// Every iteration leaves the ledger valid, with every experiment settled.

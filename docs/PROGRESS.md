@@ -1,5 +1,86 @@
 # Progress
 
+## M3: Ship, measure, decide (simulated traffic) (2026-11-14)
+
+**Built**
+
+- `lifecycle.ts` in `@lab/core`: `approve`, `ship`, `measure`, `kill` and
+  `tick` (one scheduled step: measure, ship, wait or iterate).
+  - Ship takes the patch recorded in the ledger's `built` event and checks
+    it against its hash, so what ships is exactly what was verified.
+  - Ship refuses when another experiment is live, and aborts (recorded as
+    `underpowered`) when the traffic cannot reach the planned sample size
+    within `maxDays`, or when there is no traffic data.
+  - Measure checks guardrails every interval and applies the decision rule
+    once per whole day since shipping.
+  - Keep merges the patch into the site's git repository (`gitPromote`,
+    refusing a dirty tree), then promotes. A variant that cannot be merged
+    is rolled back, not kept.
+  - Kill stops traffic first and records it afterwards, and works with a
+    broken ledger or config.
+- `stats.ts`: normal CDF and quantile, P(variant > baseline) for
+  Beta-Binomial posteriors, and the sample size formula. 10% to 12% at 80%
+  power gives 3,841 visits per bucket, as the brief says.
+- `BetaBinomialDecider` and `planShip`.
+- `@lab/deploy`:
+  - `ReferenceDeployer`: `current/`, `variants/<id>/`, `state.json`.
+    Rollback and kill only rewrite the state.
+  - The edge server with sticky bucketing on a random first-party cookie.
+    It serves the variant to its share, keeps variant builds and host files
+    out of reach, and injects the beacon.
+  - The beacon endpoint: visit, conversion, js_error, engaged; validated,
+    counted per experiment, bucket and interval, never per visitor. A
+    site-wide series feeds the traffic estimate.
+  - `StoreMeter`, with guardrails judged on the latest interval and on the
+    totals.
+- New config: `traffic.intervalHours`, `traffic.minDetectableEffect`,
+  `rollback.{jsErrorMargin, bounceMargin, minVisits}`.
+- CLI: `lab run` (one tick), `approve`, `status`, `kill`, `publish`,
+  `serve`.
+- `fixtures/sim/simulate.ts`: a traffic simulator on a simulated clock. It
+  drives visitors through the real bucketing, store, meter, decider and
+  lifecycle; only the deployer is an in-memory stand-in. Daily traffic is
+  sized from the same sample size calculation.
+
+**Verified** (129 tests)
+
+- Acceptance (`fixtures/test/simulate.test.ts`), 20 seeds each, fixture
+  config with 6-hour intervals:
+  - a true +20% effect is kept in 20 of 20 runs (at least 18 required);
+  - a true -20% effect is never kept; it is reverted in all 20;
+  - a variant that starts throwing errors on 30% of visits at day 1.5 is
+    rolled back within one 6-hour interval, in each of 5 runs.
+- A variant with no true effect is kept in 3 of 20 runs, because of daily
+  peeking. The test allows at most 2 of 10 and the README states the rate.
+- `fixtures/test/deploy.test.ts`: publish, ship and real Chromium visits
+  through the edge: sticky buckets, beacon counts per bucket, no access to
+  variant builds or host files, the kill switch sending every visitor to
+  the baseline at once, and promote.
+- Lifecycle unit tests: approval states, one live experiment, hash
+  mismatch, underpowered and no-traffic refusals, guardrail rollback,
+  once-a-day decisions, keep only at the planned sample size, failed merges,
+  maxDays, kill with a broken ledger, gated waiting; `gitPromote` commits
+  and refuses a dirty tree.
+- CLI: verify, wait, approve, publish, and a refused ship without traffic
+  data; kill with a broken config.
+
+**Found and fixed while doing it**
+
+- With keep allowed as soon as `minSamplesPerBucket` was reached, 4 of 20
+  null variants were kept. Keep now waits for the sample size planned at
+  ship time, as the brief says (`minSamplesPerBucket` is a floor).
+- Single-interval guardrail checks on about 190 variant visits tripped the
+  bounce guardrail by chance and reverted 2 of 20 good variants. A guardrail
+  now also needs a z-score set from the number of checks in `maxDays`.
+
+**Not verified, or not done**
+
+- No real traffic. The edge server is a Node process; a real host needs the
+  same logic at its edge (M4).
+- `propose-only` stops after Verify but does not open a pull request yet.
+- The consent question is still open: the beacon and cookie must not reach
+  real visitors until it is answered.
+
 ## M2: Real proposer and builder (2026-11-14)
 
 **Built**

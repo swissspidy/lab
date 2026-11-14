@@ -6,3 +6,7 @@ export * from './patch.ts';
 export * from './spec.ts';
 export * from './orchestrator.ts';
 export * from './git.ts';
+export * from './build.ts';
+export * from './stats.ts';
+export * from './decider.ts';
+export * from './lifecycle.ts';
