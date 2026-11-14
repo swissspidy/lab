@@ -1,0 +1,12 @@
+diff --git a/components/Header.jsx b/components/Header.jsx
+index e003f0c..78feeef 100644
+--- a/components/Header.jsx
++++ b/components/Header.jsx
+@@ -8,6 +8,7 @@ export default function Header() {
+ 			<nav aria-label="Main">
+ 				<ul>
+ 					<li><Link href="/">Home</Link></li>
++					<li><Link href="/docs" data-lab-event="next_step_click">Docs</Link></li>
+ 					<li><Link href="/pricing">Pricing</Link></li>
+ 				</ul>
+ 			</nav>

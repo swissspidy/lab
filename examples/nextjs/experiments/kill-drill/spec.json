@@ -1,0 +1,28 @@
+{
+	"id": "exp-0005",
+	"hypothesis": "A heading that names the unit of work reads more clearly.",
+	"intent": "Rename the features heading to “What you get with each pull request”.",
+	"acceptance": [
+		"The features heading reads “What you get with each pull request”."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"app/page.jsx"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "text",
+					"target": {
+						"css": "#features-title"
+					},
+					"equals": "What you get with each pull request"
+				}
+			]
+		}
+	]
+}

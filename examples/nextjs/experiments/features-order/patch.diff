@@ -1,0 +1,14 @@
+diff --git a/app/page.jsx b/app/page.jsx
+index b13f5ca..766c1f8 100644
+--- a/app/page.jsx
++++ b/app/page.jsx
+@@ -12,8 +12,8 @@ export default function Home() {
+ 			<section className="features" aria-labelledby="features-title">
+ 				<h2 id="features-title">What you get</h2>
+ 				<ul>
+-					<li>A fresh environment for each pull request</li>
+ 					<li>Links posted in the review automatically</li>
++					<li>A fresh environment for each pull request</li>
+ 					<li>Environments removed when the pull request closes</li>
+ 				</ul>
+ 			</section>

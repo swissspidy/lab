@@ -1,0 +1,13 @@
+diff --git a/app/pricing/page.jsx b/app/pricing/page.jsx
+index a579fa0..237ee85 100644
+--- a/app/pricing/page.jsx
++++ b/app/pricing/page.jsx
+@@ -14,7 +14,7 @@ export default function Pricing() {
+ 				</section>
+ 				<section className="plan" aria-labelledby="plan-team">
+ 					<h2 id="plan-team">Team</h2>
+-					<p className="price" data-price>CHF 24 per month</p>
++					<p className="price" data-price>CHF 29 per month</p>
+ 					<p>Unlimited environments and custom domains.</p>
+ 				</section>
+ 			</div>

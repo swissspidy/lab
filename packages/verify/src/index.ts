@@ -151,7 +151,9 @@ export class BrowserVerifier implements Verifier {
 		const checks: Array<{ check: string; failing: PageMeasurement[]; message: string; passMessage: string }> = [];
 		const add = (check: string, pick: (m: PageMeasurement) => string[], passMessage: string) => {
 			const found = run.measurements.map((m) => ({ m, items: pick(m) })).filter((x) => x.items.length > 0);
-			checks.push({ check, failing: found.map((x) => x.m), message: found.map((x) => `${where(x.m)}: ${x.items.slice(0, 5).join('; ')}`).join(' | '), passMessage });
+			const shown = found.slice(0, 3).map((x) => `${where(x.m)}: ${x.items.slice(0, 3).join('; ')}${x.items.length > 3 ? ` (+${x.items.length - 3} more)` : ''}`);
+			const more = found.length > 3 ? ` | and ${found.length - 3} more page/viewport(s)` : '';
+			checks.push({ check, failing: found.map((x) => x.m), message: `${shown.join(' | ')}${more}`, passMessage });
 		};
 		if (against) {
 			const newAxe = (m: PageMeasurement) => {

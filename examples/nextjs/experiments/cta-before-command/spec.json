@@ -1,0 +1,46 @@
+{
+	"id": "exp-0006",
+	"hypothesis": "Visitors who are ready to start look for the button before the command.",
+	"intent": "Put Get started above the install command.",
+	"acceptance": [
+		"Get started comes before the install command in the install section.",
+		"Get started is still visible without scrolling at 1280x800."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"components/Install.jsx"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "text",
+					"target": {
+						"css": ".install > p:nth-of-type(2) a"
+					},
+					"equals": "Get started"
+				}
+			]
+		},
+		{
+			"criterion": 1,
+			"page": "index.html",
+			"viewport": {
+				"width": 1280,
+				"height": 800
+			},
+			"expect": [
+				{
+					"expect": "in-viewport",
+					"target": {
+						"role": "link",
+						"name": "Get started"
+					}
+				}
+			]
+		}
+	]
+}

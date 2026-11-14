@@ -1,0 +1,14 @@
+diff --git a/app/page.jsx b/app/page.jsx
+index b13f5ca..4eca876 100644
+--- a/app/page.jsx
++++ b/app/page.jsx
+@@ -17,8 +17,8 @@ export default function Home() {
+ 					<li>Environments removed when the pull request closes</li>
+ 				</ul>
+ 			</section>
+-			<Install />
+ 			<Signup />
++			<Install />
+ 		</>
+ 	);
+ }

@@ -39,3 +39,30 @@ conservative choice the lab took meanwhile.
 9. **Guardrail sensitivity.** A guardrail needs the margin and a z-score set
    so that chance trips one less than 5% of the time over `maxDays`. Without
    the z-score, noisy 6-hour windows reverted good variants.
+
+## Decisions taken on 2026-11-14
+
+Pascal asked me to test with a local Next.js site, skip the metric,
+consent and API key questions for now, and make the remaining decisions.
+
+10. **Target site.** `examples/nextjs`, a Next.js 16 static export built for
+    the lab, with the fixture's planted flaws. Static export keeps the
+    reference host (and any static host) able to serve it. A Next.js site
+    that needs a server (SSR, API routes) needs a different Deployer.
+11. **Traffic.** Synthetic visitors over real HTTP, with documented true
+    effects (`VISITOR_MODEL` in `examples/run-nextjs.ts`), on a simulated
+    clock so two weeks run in minutes. Variant share 0.5 (the maximum),
+    intervals of 6 hours.
+12. **Approval.** In the local run the agent approves as `operator`. On a
+    real site that must be a person running `lab approve`.
+13. **Primary metric.** `next_step_click`, as on the fixture: a click on a
+    tracked link to the docs.
+14. **Auto mode.** `auto` now takes effect only once the ledger shows three
+    completed gated loops, no guardrail rollbacks and a tested kill switch.
+    I chose "a guardrail rollback" as the definition of an escape, since the
+    lab cannot see invariants break in production.
+15. **Null results stall the queue.** One experiment at a time plus
+    `maxDays: 14` means a variant with no effect blocks the loop for up to two
+    weeks. Options: a shorter `maxDays`, or a futility rule that reverts once
+    the planned sample is reached and P sits between 0.2 and 0.8. Not changed
+    yet; your call.

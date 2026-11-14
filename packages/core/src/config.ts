@@ -171,10 +171,10 @@ export function validateConfig(raw: unknown): ConfigResult {
 		error('config-autonomy', 'autonomy', '`autonomy` must be `propose-only`, `gated` or `auto`.');
 	}
 	if (config.autonomy === 'auto') {
-		error(
-			'config-autonomy-auto-unavailable',
+		warn(
+			'config-autonomy-auto',
 			'autonomy',
-			'`auto` is allowed only once M5\'s entry criteria are met, and the lab does not support it yet. Use `gated`.',
+			'`auto` takes effect only once the ledger meets the entry criteria (three gated loops, no escapes, a tested kill switch). Until then experiments wait for `lab approve`. `lab doctor` shows which criteria are met.',
 		);
 	}
 	const { share, minSamplesPerBucket, maxDays } = config.traffic;

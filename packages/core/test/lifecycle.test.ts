@@ -182,6 +182,63 @@ describe('lifecycle', () => {
 		assert.deepEqual(log.filter((l) => l === 'kill'), ['kill', 'kill']);
 	});
 
+	describe('auto mode', () => {
+		const autoConfig = () => ({ ...config, autonomy: 'auto' as const });
+		const noIterate = {
+			proposer: { propose: async () => Promise.reject(new Error('should not propose')) },
+			builder: { build: async () => Promise.reject(new Error('no')) },
+			sandbox: { start: async () => Promise.reject(new Error('no')) },
+			verifier: { verify: async () => Promise.reject(new Error('no')) },
+		};
+		async function finished(id: string, end: 'kept' | 'reverted' | 'kill' | 'guardrail', by = 'person') {
+			const patch = PATCH.replace('+b', `+${id}`);
+			await verified(id, patch);
+			const base = { experiment: id, siteCommit: 'c', patchHash: sha256(patch) };
+			await ledger.append({ ...base, type: 'approved', payload: { by } });
+			await ledger.append({ ...base, type: 'shipped', payload: {} });
+			if (end === 'kill' || end === 'guardrail') {
+				await ledger.append({ ...base, type: 'reverted', payload: { reason: end } });
+				return;
+			}
+			await ledger.append({ ...base, type: 'measured', payload: { day: 1 } });
+			await ledger.append({ ...base, type: end, payload: end === 'reverted' ? { reason: 'decision' } : {} });
+		}
+
+		it('waits for a person until the entry criteria hold', async () => {
+			await finished('exp-0001', 'kept');
+			await finished('exp-0002', 'reverted');
+			await verified('exp-0003', PATCH.replace('+b', '+z'));
+			const result = await tick({ ...deps({ config: autoConfig() }), ...noIterate, evidenceDir: dir });
+			assert.equal(result.step, 'wait');
+			assert.match(result.step === 'wait' ? result.reason : '', /2 experiment\(s\) completed the full loop.*kill switch has not been used/s);
+			assert.deepEqual(log, []);
+		});
+
+		it('approves and ships by itself once they hold', async () => {
+			await finished('exp-0001', 'kept');
+			await finished('exp-0002', 'reverted');
+			await finished('exp-0003', 'kept');
+			await finished('exp-0004', 'kill');
+			await verified('exp-0005', PATCH.replace('+b', '+z'));
+			const result = await tick({ ...deps({ config: autoConfig() }), ...noIterate, evidenceDir: dir });
+			assert.equal(result.step, 'ship');
+			assert.deepEqual(log, ['ship exp-0005']);
+			assert.equal((await ledger.history()).find((e) => e.experiment === 'exp-0005' && e.type === 'approved')?.payload.by, 'auto');
+		});
+
+		it('stops after an escape, and does not count its own approvals', async () => {
+			await finished('exp-0001', 'kept');
+			await finished('exp-0002', 'kept', 'auto');
+			await finished('exp-0003', 'kept');
+			await finished('exp-0004', 'kill');
+			await finished('exp-0006', 'guardrail');
+			await verified('exp-0007', PATCH.replace('+b', '+z'));
+			const result = await tick({ ...deps({ config: autoConfig() }), ...noIterate, evidenceDir: dir });
+			assert.equal(result.step, 'wait');
+			assert.match(result.step === 'wait' ? result.reason : '', /2 experiment\(s\).*Guardrails rolled back exp-0006/s);
+		});
+	});
+
 	it('tick waits for approval in gated mode instead of shipping', async () => {
 		await verified();
 		const iterate = { proposer: { propose: async () => Promise.reject(new Error('should not propose')) } };
@@ -206,6 +263,18 @@ describe('gitPromote', () => {
 			gitPromote(join(repo, 'site'), { experiment: 'exp-0001', patch: PATCH });
 			assert.equal(readFileSync(join(repo, 'site', 'src', 'a.html'), 'utf8'), 'b\n');
 			assert.match(git('log', '-1', '--format=%s'), /lab: keep exp-0001/);
+			// The lab's own uncommitted files do not block a promotion, and are not committed with it.
+			execFileSync('mkdir', ['-p', join(repo, 'site', 'lab')]);
+			writeFileSync(join(repo, 'site', 'lab', 'ledger.jsonl'), '{}\n');
+			const before = git('rev-parse', 'HEAD');
+			gitPromote(join(repo, 'site'), { experiment: 'exp-0003', patch: PATCH.replaceAll('-a', '-b').replaceAll('+b', '+c') });
+			assert.notEqual(git('rev-parse', 'HEAD'), before);
+			assert.match(git('status', '--porcelain'), /\?\? site\/lab\//);
+			// A staged lab file stays staged and out of the promotion commit.
+			git('add', 'site/lab/ledger.jsonl');
+			gitPromote(join(repo, 'site'), { experiment: 'exp-0004', patch: PATCH.replaceAll('-a', '-c').replaceAll('+b', '+d') });
+			assert.doesNotMatch(git('show', '--name-only', '--format=', 'HEAD'), /ledger/);
+			assert.match(git('status', '--porcelain'), /^A {2}site\/lab\/ledger\.jsonl/m);
 			writeFileSync(join(repo, 'site', 'src', 'a.html'), 'dirty\n');
 			assert.throws(() => gitPromote(join(repo, 'site'), { experiment: 'exp-0002', patch: PATCH }), (e: unknown) => e instanceof StageError && e.code === 'promote-dirty');
 		} finally {

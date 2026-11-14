@@ -1,6 +1,7 @@
 // What happens after Verify: approve, ship, measure, decide, kill. Only this
 // file calls the Deployer, and only for an experiment the ledger shows as
 // verified (and approved).
+import { autonomyEntry } from './autonomy.ts';
 import { planShip, probabilityExpected } from './decider.ts';
 import { experimentStates, sha256 } from './ledger.ts';
 import { runIteration } from './orchestrator.ts';
@@ -162,9 +163,17 @@ export async function tick(deps: IterationDeps & LiveDeps): Promise<TickResult> 
 	}
 	if (deps.config.autonomy !== 'propose-only') {
 		for (const [id, state] of experimentStates(events)) {
-			if (state === 'verify_passed' && !deps.config.autonomy.startsWith('auto')) {
-				return { step: 'wait', experiment: id, reason: `${id} passed Verify and waits for \`lab approve ${id}\`.` };
+			if (state !== 'verify_passed') continue;
+			if (deps.config.autonomy === 'auto') {
+				const entry = autonomyEntry(events);
+				if (entry.met) {
+					await approve(deps, id, 'auto');
+					return { step: 'ship', result: await ship(deps, id) };
+				}
+				const unmet = entry.checks.filter((c) => !c.met).map((c) => c.detail).join(' ');
+				return { step: 'wait', experiment: id, reason: `${id} passed Verify. Auto mode is not active yet: ${unmet} It waits for \`lab approve ${id}\`.` };
 			}
+			return { step: 'wait', experiment: id, reason: `${id} passed Verify and waits for \`lab approve ${id}\`.` };
 		}
 	}
 	return { step: 'iterate', result: await runIteration(deps) };

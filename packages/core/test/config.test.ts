@@ -65,8 +65,10 @@ describe('validateConfig', () => {
 		assert.deepEqual(codes({ ...valid(), traffic: { ...valid().traffic, maxDays: 1.5 } }), ['config-traffic-days']);
 	});
 
-	it('refuses auto autonomy until M5', () => {
-		assert.deepEqual(codes({ ...valid(), autonomy: 'auto' }), ['config-autonomy-auto-unavailable']);
+	it('accepts auto autonomy with a warning: the entry criteria decide when it takes effect', () => {
+		const result = validateConfig({ ...valid(), autonomy: 'auto' });
+		assert.ok(result.config);
+		assert.deepEqual(result.diagnostics.map((d) => [d.code, d.severity]), [['config-autonomy-auto', 'warning']]);
 		assert.deepEqual(codes({ ...valid(), autonomy: 'yolo' }), ['config-autonomy']);
 		assert.deepEqual(codes({ ...valid(), autonomy: 'propose-only' }), []);
 	});

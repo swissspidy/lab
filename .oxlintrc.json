@@ -1,6 +1,13 @@
 {
 	"$schema": "./node_modules/oxlint/configuration_schema.json",
-	"plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node"],
+	"plugins": [
+		"typescript",
+		"unicorn",
+		"oxc",
+		"import",
+		"promise",
+		"node"
+	],
 	"categories": {
 		"correctness": "error",
 		"suspicious": "warn",
@@ -10,12 +17,28 @@
 		"node": true,
 		"es2024": true
 	},
-	"ignorePatterns": ["**/dist/**", "**/node_modules/**", ".lab-tmp/**"],
+	"ignorePatterns": [
+		"**/.next/**",
+		"**/dist/**",
+		"**/node_modules/**",
+		"**/out/**",
+		".lab-tmp/**"
+	],
 	"rules": {
 		"typescript/no-explicit-any": "error",
 		"typescript/consistent-type-imports": "error",
 		"import/no-cycle": "error",
 		"no-await-in-loop": "off",
 		"unicorn/consistent-function-scoping": "off"
-	}
+	},
+	"overrides": [
+		{
+			"files": [
+				"examples/**/app/**"
+			],
+			"rules": {
+				"import/no-unassigned-import": "off"
+			}
+		}
+	]
 }

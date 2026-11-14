@@ -1,0 +1,27 @@
+{
+	"id": "exp-0007",
+	"hypothesis": "A search box without a button looks lighter.",
+	"intent": "Hide the search button.",
+	"acceptance": [
+		"The search field is still on every page."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"app/globals.css"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "visible",
+					"target": {
+						"label": "Search the docs"
+					}
+				}
+			]
+		}
+	]
+}
