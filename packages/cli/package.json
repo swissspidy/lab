@@ -13,6 +13,8 @@
 		"@lab/agent": "0.0.0",
 		"@lab/sandbox": "0.0.0",
 		"@lab/verify": "0.0.0",
-		"@lab/deploy": "0.0.0"
+		"@lab/deploy": "0.0.0",
+		"@lab/adapters": "0.0.0",
+		"@lab/report": "0.0.0"
 	}
 }
