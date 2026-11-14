@@ -2,12 +2,12 @@
 // host this logic runs at the edge (it only reads state and rewrites the
 // path); here it is a Node HTTP server.
 import { createHash, randomBytes } from 'node:crypto';
-import { createReadStream, existsSync, realpathSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { extname, join, normalize, sep } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { resolveStatic } from '@lab/core';
 import type { LabConfig } from '@lab/core';
 import { readState } from './deployer.ts';
 import { BUCKETS, EVENTS, SITE } from './metrics.ts';
@@ -107,18 +107,15 @@ export function createEdgeHandler(options: EdgeOptions): (req: IncomingMessage, 
 		const bucket: Bucket = state.live ? assignBucket(visitor, state.live.experiment, state.live.share) : 'baseline';
 		const base = bucket === 'variant' && state.live ? join(root, 'variants', state.live.experiment) : join(root, 'current');
 		if (!existsSync(base)) return void res.writeHead(503).end('Nothing is published.');
-		const dir = realpathSync(base);
 		let path: string;
 		try {
 			path = decodeURIComponent(url.pathname);
 		} catch {
 			return void res.writeHead(400, headers).end('Bad request');
 		}
-		let file = normalize(join(dir, path));
-		if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
-		if (!existsSync(file)) return void res.writeHead(404, headers).end('Not found');
-		const real = realpathSync(file);
-		if (!real.startsWith(dir + sep)) return void res.writeHead(403).end();
+		const real = resolveStatic(base, path);
+		if (real === 'forbidden') return void res.writeHead(403).end();
+		if (real === null) return void res.writeHead(404, headers).end('Not found');
 		const type = TYPES[extname(real)] ?? 'application/octet-stream';
 		if (type.startsWith('text/html')) {
 			const tag = `<script src="${BEACON_SCRIPT}" data-experiment="${state.live?.experiment ?? ''}" data-bucket="${bucket}" defer></script>`;

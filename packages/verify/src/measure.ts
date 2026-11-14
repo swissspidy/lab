@@ -62,7 +62,10 @@ export async function measurePage(browser: Browser, siteUrl: string, path: strin
 	// Requests to other origins are refused by the sandbox and reported as new origins instead.
 	const isOwn = (url: string) => url.startsWith('data:') || url.startsWith('blob:') || new URL(url).origin === own;
 	page.on('requestfailed', (r) => {
-		if (isOwn(r.url())) failedRequests.push(`${r.url()} (${r.failure()?.errorText})`);
+		// ERR_ABORTED is the page cancelling its own request (a prefetch cut
+		// short by navigation or by closing the page), not a failure to serve.
+		const error = r.failure()?.errorText ?? '';
+		if (isOwn(r.url()) && error !== 'net::ERR_ABORTED') failedRequests.push(`${r.url()} (${error})`);
 	});
 	page.on('response', (r) => {
 		if (r.status() >= 400) failedRequests.push(`${r.url()} (${r.status()})`);

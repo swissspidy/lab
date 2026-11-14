@@ -9,7 +9,7 @@ import { StageError } from './types.ts';
 export function siteCommit(dir: string): string {
 	try {
 		const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-		const dirty = execFileSync('git', ['status', '--porcelain', '--', '.'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+		const dirty = execFileSync('git', ['status', '--porcelain', '--', '.', ':(exclude)lab'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
 		return dirty ? `${commit}+dirty` : commit;
 	} catch {
 		return 'no-git';
@@ -29,7 +29,9 @@ export function gitPromote(dir: string, variant: { experiment: string; patch: st
 	} catch {
 		throw new StageError('promote-no-git', `${dir} is not in a git repository, so a kept variant cannot be merged.`);
 	}
-	if (git(['status', '--porcelain']) !== '') throw new StageError('promote-dirty', 'The site repository has uncommitted changes. Commit or stash them first.');
+	// The lab's own files (the ledger, recorded specs, evidence) may be uncommitted;
+	// anything else would get mixed into the variant's commit.
+	if (git(['status', '--porcelain', '--', '.', ':(exclude)lab']) !== '') throw new StageError('promote-dirty', 'The site repository has uncommitted changes outside lab/. Commit or stash them first.');
 	const prefix = git(['rev-parse', '--show-prefix']);
 	try {
 		git(['apply', '--index', ...(prefix ? [`--directory=${prefix.replace(/\/$/, '')}`] : []), '-'], variant.patch.endsWith('\n') ? variant.patch : `${variant.patch}\n`);

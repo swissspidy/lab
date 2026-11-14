@@ -1,7 +1,7 @@
 // Builds a site, or a patched copy of it, in a scratch directory. Shared by
 // the sandbox (to test) and the deployer (to ship), so both build the same way.
 import { spawn } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
 import { StageError } from './types.ts';
@@ -78,8 +78,13 @@ export async function buildInScratch(ref: RepoRef | Variant, config: LabConfig, 
 				return !skip.has(rel) && !skip.has(top) && rel !== join('lab', 'ledger.jsonl') && !rel.startsWith(join('lab', 'evidence'));
 			},
 		});
-		// Dependencies are shared, read as they are: a variant may not change them.
-		if (existsSync(join(source, 'node_modules'))) symlinkSync(join(source, 'node_modules'), join(work, 'node_modules'));
+		// Dependencies are copied, not linked: bundlers such as Turbopack refuse a
+		// node_modules outside the project root, and a copy keeps the build from
+		// writing into the site's own dependencies. A variant may not change them.
+		if (existsSync(join(source, 'node_modules'))) {
+			const copied = await runCommand(`cp -a ${JSON.stringify(join(source, 'node_modules'))} ${JSON.stringify(join(work, 'node_modules'))}`, work, timeoutMs);
+			if (copied.code !== 0) throw new StageError('build-deps-copy-failed', 'Could not copy node_modules into the scratch directory.', copied.output);
+		}
 
 		if (isVariant(ref)) {
 			const patchFile = join(work, '.lab-variant.patch');

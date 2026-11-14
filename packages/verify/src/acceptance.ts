@@ -83,8 +83,11 @@ async function assertion(page: Page, a: Assertion, viewport: { width: number; he
 			const text = await page.evaluate(() => navigator.clipboard.readText()).catch((e: unknown) => `<unreadable: ${String(e)}>`);
 			return text === a.equals ? null : `The clipboard holds “${text}”, expected “${a.equals}”.`;
 		}
-		case 'url':
-			return page.url().endsWith(a.endsWith) ? null : `The page is ${page.url()}, expected it to end with ${a.endsWith}.`;
+		case 'url': {
+			// Client-side routers navigate asynchronously: wait for it, as for the other assertions.
+			const ok = await page.waitForURL((u) => u.href.endsWith(a.endsWith), { timeout: WAIT_MS }).then(() => true, () => false);
+			return ok ? null : `The page is ${page.url()}, expected it to end with ${a.endsWith}.`;
+		}
 	}
 }
 

@@ -1,7 +1,8 @@
-import { createReadStream, existsSync, realpathSync, statSync } from 'node:fs';
+import { createReadStream, realpathSync } from 'node:fs';
+import { resolveStatic } from '@lab/core';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { extname, join, normalize, sep } from 'node:path';
+import { extname } from 'node:path';
 
 const TYPES: Record<string, string> = {
 	'.html': 'text/html; charset=utf-8',
@@ -38,15 +39,13 @@ export async function serveDir(dir: string): Promise<StaticServer> {
 			res.writeHead(400).end();
 			return;
 		}
-		let file = normalize(join(root, path));
-		if (existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
-		if (!existsSync(file)) {
-			res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
+		const real = resolveStatic(root, path);
+		if (real === 'forbidden') {
+			res.writeHead(403).end();
 			return;
 		}
-		const real = realpathSync(file);
-		if (real !== root && !real.startsWith(root + sep)) {
-			res.writeHead(403).end();
+		if (real === null) {
+			res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found');
 			return;
 		}
 		res.writeHead(200, { 'content-type': TYPES[extname(real)] ?? 'application/octet-stream', 'cache-control': 'no-store' });

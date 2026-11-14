@@ -16,7 +16,9 @@
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"lint": "oxlint --deny-warnings",
 		"test": "node --test --test-reporter=spec \"packages/*/test/*.test.ts\" \"fixtures/test/*.test.ts\"",
-		"check": "npm run lint && npm run typecheck && npm test"
+		"check": "npm run lint && npm run typecheck && npm test",
+		"test:nextjs": "node --test --test-reporter=spec \"examples/test/*.test.ts\"",
+		"example:nextjs": "node examples/run-nextjs.ts --out docs/runs/nextjs"
 	},
 	"devDependencies": {
 		"@types/node": "^24.0.0",

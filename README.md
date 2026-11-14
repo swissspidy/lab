@@ -39,10 +39,20 @@ ends in `verify_passed`. The second changes a price and ends in
 
 ## Status
 
-M3 of six milestones is done: the loop ships a verified, approved variant to
-a share of traffic, measures it and keeps or reverts it, on simulated
-traffic. M4 is partly done (the ledger report and the Graft spec adapter); it
-needs a real target site to finish. See [docs/PROGRESS.md](docs/PROGRESS.md).
+M4 of six milestones is done, on a local Next.js site with synthetic
+traffic: three experiments went through verify, approval, ship, measure and
+decide, two were kept and merged, one was reverted, and a breakage was
+rejected. See [docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
+[docs/runs/nextjs/index.html](docs/runs/nextjs/index.html).
+
+## Try it on a Next.js site
+
+```sh
+npm install
+npm install --prefix examples/nextjs
+npm run lab -- run --dry examples/nextjs --experiment examples/nextjs/experiments/nav-docs
+npm run example:nextjs   # the full loop on simulated time, about 3 minutes
+```
 
 `lab report` writes the ledger as a static HTML page that someone who has
 never seen the repository can read.

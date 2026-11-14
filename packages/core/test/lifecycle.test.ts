@@ -206,6 +206,13 @@ describe('gitPromote', () => {
 			gitPromote(join(repo, 'site'), { experiment: 'exp-0001', patch: PATCH });
 			assert.equal(readFileSync(join(repo, 'site', 'src', 'a.html'), 'utf8'), 'b\n');
 			assert.match(git('log', '-1', '--format=%s'), /lab: keep exp-0001/);
+			// The lab's own uncommitted files do not block a promotion, and are not committed with it.
+			execFileSync('mkdir', ['-p', join(repo, 'site', 'lab')]);
+			writeFileSync(join(repo, 'site', 'lab', 'ledger.jsonl'), '{}\n');
+			const before = git('rev-parse', 'HEAD');
+			gitPromote(join(repo, 'site'), { experiment: 'exp-0003', patch: PATCH.replaceAll('-a', '-b').replaceAll('+b', '+c') });
+			assert.notEqual(git('rev-parse', 'HEAD'), before);
+			assert.match(git('status', '--porcelain'), /\?\? site\/lab\//);
 			writeFileSync(join(repo, 'site', 'src', 'a.html'), 'dirty\n');
 			assert.throws(() => gitPromote(join(repo, 'site'), { experiment: 'exp-0002', patch: PATCH }), (e: unknown) => e instanceof StageError && e.code === 'promote-dirty');
 		} finally {

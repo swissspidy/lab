@@ -1,0 +1,28 @@
+{
+	"id": "exp-0004",
+	"hypothesis": "A higher Team price signals quality.",
+	"intent": "Raise the Team plan price.",
+	"acceptance": [
+		"The pricing page shows the Team plan."
+	],
+	"expectedEffect": "next_step_click up",
+	"touches": [
+		"app/pricing/page.jsx"
+	],
+	"source": "agent",
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "pricing",
+			"expect": [
+				{
+					"expect": "visible",
+					"target": {
+						"role": "heading",
+						"name": "Team"
+					}
+				}
+			]
+		}
+	]
+}

@@ -39,3 +39,21 @@ conservative choice the lab took meanwhile.
 9. **Guardrail sensitivity.** A guardrail needs the margin and a z-score set
    so that chance trips one less than 5% of the time over `maxDays`. Without
    the z-score, noisy 6-hour windows reverted good variants.
+
+## Decisions taken on 2026-11-14
+
+Pascal asked me to test with a local Next.js site, skip the metric,
+consent and API key questions for now, and make the remaining decisions.
+
+10. **Target site.** `examples/nextjs`, a Next.js 16 static export built for
+    the lab, with the fixture's planted flaws. Static export keeps the
+    reference host (and any static host) able to serve it. A Next.js site
+    that needs a server (SSR, API routes) needs a different Deployer.
+11. **Traffic.** Synthetic visitors over real HTTP, with documented true
+    effects (`VISITOR_MODEL` in `examples/run-nextjs.ts`), on a simulated
+    clock so two weeks run in minutes. Variant share 0.5 (the maximum),
+    intervals of 6 hours.
+12. **Approval.** In the local run the agent approves as `operator`. On a
+    real site that must be a person running `lab approve`.
+13. **Primary metric.** `next_step_click`, as on the fixture: a click on a
+    tracked link to the docs.
