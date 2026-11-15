@@ -1,5 +1,38 @@
 # Progress
 
+## After M5: a reproducible example run (2026-11-15)
+
+`npm run example:nextjs` regenerates `docs/WEEK-ONE.md`, the report and the
+ledger in `docs/runs/nextjs/`. Two runs did not agree, so the published
+week could not be checked against its source.
+
+**Fixed**
+
+- The example's git commits are dated on the simulated clock; their hashes
+  are in the ledger.
+- The four real-browser visits carry fixed visitor ids; the edge server gave
+  them random ones, so their bucket and the counts changed per run.
+- The ledger records evidence inside the site directory relative to it, not
+  as an absolute temporary path. That also keeps a ledger valid when the
+  site moves; the report resolves the paths against `siteDir`.
+
+**Verified**
+
+- Two consecutive runs write byte-identical `WEEK-ONE.md`, `ledger.jsonl`
+  and `index.html`.
+- `npm run check`: 196 tests, including the relative evidence paths in the
+  ledger and the report.
+
+**Changed numbers**
+
+The regenerated run differs from the one the M4 and M5 entries below
+describe, because the traffic now follows the seed alone. Same outcomes,
+other days: exp-0001 kept on day 5 (P 0.952), exp-0002 kept on day 7,
+exp-0003 reverted, exp-0004 rejected, exp-0005 killed. The week starts on
+2026-11-09: exp-0006 kept, exp-0007 rejected by
+`invariants.search-returns-results`, exp-0008 (no effect) still live at the
+end. The entries below are left as they were run.
+
 ## After M5: Assay invariants (2026-11-15)
 
 Pascal asked why the invariants gate does not use Assay. The inventory had
