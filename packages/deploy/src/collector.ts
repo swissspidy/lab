@@ -17,6 +17,7 @@ import type { DeployState } from './deployer.ts';
 import { recordBeacon } from './edge.ts';
 import type { MetricStore } from './metrics.ts';
 import { FileTweakStore } from './tweaks.ts';
+import { StageError } from '@lab/core';
 import type { LabConfig } from '@lab/core';
 
 export interface CollectorOptions {
@@ -53,12 +54,23 @@ export async function startCollector(options: CollectorOptions): Promise<{ url: 
 			const [, id, ext] = tweak as unknown as [string, string, string | undefined];
 			if (req.method === 'PUT' && ext === undefined) {
 				if (!authorized(req.headers.authorization)) return void res.writeHead(401).end();
-				let body = '';
+				// Bytes, counted before decoding; one 413 once the limit is passed.
+				const chunks: Buffer[] = [];
+				let size = 0;
+				let tooLarge = false;
 				req.on('data', (chunk: Buffer) => {
-					body += chunk.toString();
-					if (body.length > 200_000) req.destroy();
+					if (tooLarge) return;
+					size += chunk.length;
+					if (size > 200_000) {
+						tooLarge = true;
+						res.writeHead(413, { connection: 'close' }).end();
+						return;
+					}
+					chunks.push(chunk);
 				});
 				req.on('end', () => {
+					if (tooLarge) return;
+					const body = Buffer.concat(chunks).toString('utf8');
 					let record: unknown = null;
 					try {
 						record = JSON.parse(body);
@@ -67,7 +79,8 @@ export async function startCollector(options: CollectorOptions): Promise<{ url: 
 					if (named !== id) return void res.writeHead(400).end();
 					tweaks.put(record as never).then(
 						() => res.writeHead(204).end(),
-						() => res.writeHead(400).end(),
+						// A record that fails the gate is the caller's; anything else (a full disk) is ours.
+						(error: unknown) => res.writeHead(error instanceof StageError && error.code === 'tweak-record-invalid' ? 400 : 500).end(),
 					);
 				});
 				return;

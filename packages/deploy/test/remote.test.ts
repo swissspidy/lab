@@ -204,6 +204,8 @@ describe('personal tweaks in the collector', () => {
 			assert.equal((await put(record({}, 'a { background: url(https://t.example/x.png) }'))).status, 400, 'CSS that makes a request');
 			assert.equal((await put(record(), 'secret-token', 'tw-ffffffffffff')).status, 400, 'the path names another tweak');
 			assert.equal((await fetch(`${collector.url}/tweaks/tw-0123456789ab.css`)).status, 404);
+			const huge = await fetch(`${collector.url}/tweaks/tw-0123456789ab`, { method: 'PUT', headers: { authorization: 'Bearer secret-token' }, body: '€'.repeat(80_000) });
+			assert.equal(huge.status, 413, 'the limit counts bytes, and answers once');
 			assert.equal((await put(record())).status, 204);
 			const css = await fetch(`${collector.url}/tweaks/tw-0123456789ab.css`);
 			assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
@@ -227,6 +229,19 @@ describe('personal tweaks in the collector', () => {
 		try {
 			const store = new RemoteTweakStore({ url: collector.url, token: 'secret-token', config: { tweaks: {} } });
 			await assert.rejects(store.put(record() as never), (e: unknown) => e instanceof StageError && e.code === 'tweaks-disabled');
+		} finally {
+			await collector.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('answers 500, not 400, when storing fails for its own reasons', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
+		writeFileSync(join(dir, 'tweaks'), 'a file where the directory should be');
+		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: {} });
+		try {
+			const res = await fetch(`${collector.url}/tweaks/tw-0123456789ab`, { method: 'PUT', headers: { authorization: 'Bearer secret-token' }, body: JSON.stringify(record()) });
+			assert.equal(res.status, 500);
 		} finally {
 			await collector.close();
 			rmSync(dir, { recursive: true, force: true });

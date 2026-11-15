@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { CssInjectingProxy, injectStyle } from '../src/index.ts';
+import { CssInjectingProxy, TWEAK_STYLESHEET, injectStylesheet } from '../src/index.ts';
 
 describe('CssInjectingProxy', () => {
 	let upstream: ReturnType<typeof createServer>;
@@ -30,7 +30,10 @@ describe('CssInjectingProxy', () => {
 		try {
 			assert.equal(site.root, '/built');
 			const page = await fetch(site.url);
-			assert.equal(await page.text(), '<html><head><title>T</title><style data-lab-tweak>h1 { font-size: 3rem }</style></head><body><h1>Hi</h1></body></html>');
+			assert.equal(await page.text(), '<html><head><title>T</title><link rel="stylesheet" href="/__lab-tweak.css" data-lab-tweak></head><body><h1>Hi</h1></body></html>');
+			const sheet = await fetch(new URL(TWEAK_STYLESHEET, site.url));
+			assert.equal(sheet.headers.get('content-type'), 'text/css; charset=utf-8');
+			assert.equal(await sheet.text(), 'h1 { font-size: 3rem }', 'the CSS is served from the same origin, never written into the page');
 			assert.deepEqual(page.headers.getSetCookie(), ['a=1; Path=/', 'b=2; Path=/'], 'cookies stay separate');
 			assert.equal(await (await fetch(new URL('site.css', site.url))).text(), 'h1 { color: red }');
 			const posted = await fetch(site.url, { method: 'POST', body: 'x=1' });
@@ -42,8 +45,47 @@ describe('CssInjectingProxy', () => {
 		}
 	});
 
-	it('puts the style first when a page has no head', () => {
-		assert.equal(injectStyle('<p>x</p>', 'p{}'), '<style data-lab-tweak>p{}</style><p>x</p>');
-		assert.equal(injectStyle('<HEAD></HEAD >', 'p{}'), '<HEAD><style data-lab-tweak>p{}</style></HEAD >');
+	it('puts the link first when a page has no head', () => {
+		assert.equal(injectStylesheet('<p>x</p>'), '<link rel="stylesheet" href="/__lab-tweak.css" data-lab-tweak><p>x</p>');
+		assert.equal(injectStylesheet('<HEAD></HEAD >'), '<HEAD><link rel="stylesheet" href="/__lab-tweak.css" data-lab-tweak></HEAD >');
+	});
+
+	it('streams what is not a page, so an open event stream reaches the browser', async () => {
+		const events = createServer((_req, res) => {
+			res.writeHead(200, { 'content-type': 'text/event-stream' });
+			res.write('data: first\n\n');
+		});
+		await new Promise<void>((done) => events.listen(0, '127.0.0.1', done));
+		const site = await new CssInjectingProxy().inject({ url: `http://127.0.0.1:${(events.address() as AddressInfo).port}/`, stop: async () => {} }, 'p{}');
+		try {
+			const res = await fetch(site.url);
+			const reader = res.body!.getReader();
+			const { value } = await reader.read();
+			assert.equal(new TextDecoder().decode(value), 'data: first\n\n');
+			await reader.cancel();
+		} finally {
+			await site.stop();
+			events.closeAllConnections();
+			events.close();
+		}
+	});
+
+	it('applies the tweak on a site whose CSP allows only its own styles', async () => {
+		const strict = createServer((_req, res) => {
+			res.writeHead(200, { 'content-type': 'text/html', 'content-security-policy': "style-src 'self'" }).end('<html><head></head><body><h1>Hi</h1></body></html>');
+		});
+		await new Promise<void>((done) => strict.listen(0, '127.0.0.1', done));
+		const site = await new CssInjectingProxy().inject({ url: `http://127.0.0.1:${(strict.address() as AddressInfo).port}/`, stop: async () => {} }, 'h1 { color: rgb(1, 2, 3) }');
+		const { chromium } = await import('playwright');
+		const browser = await chromium.launch();
+		try {
+			const page = await browser.newPage();
+			await page.goto(site.url);
+			assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('h1')!).color), 'rgb(1, 2, 3)');
+		} finally {
+			await browser.close();
+			await site.stop();
+			strict.close();
+		}
 	});
 });

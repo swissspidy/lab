@@ -40,8 +40,46 @@ export function validateTweakSpec(raw: unknown): { spec: TweakSpec | null; diagn
 	return { spec: diagnostics.length === 0 ? (raw as unknown as TweakSpec) : null, diagnostics };
 }
 
-/** What a tweak's CSS may not contain, and why. Checked after comments are removed. */
-const FORBIDDEN: Array<[RegExp, string]> = [
+/**
+ * Splits CSS the way a CSS tokenizer does: comments dropped, strings kept
+ * apart from the code around them (their contents replaced by `""`), so a
+ * quoted comment marker cannot hide code and a commented-out word cannot
+ * hide in a string. Null when a comment or a string is not closed, or a
+ * string runs over a line (a bad string to a browser).
+ */
+export function splitCss(css: string): { code: string; strings: string[] } | null {
+	let code = '';
+	const strings: string[] = [];
+	let i = 0;
+	while (i < css.length) {
+		const c = css[i]!;
+		if (c === '/' && css[i + 1] === '*') {
+			const end = css.indexOf('*/', i + 2);
+			if (end === -1) return null;
+			code += ' ';
+			i = end + 2;
+		} else if (c === '"' || c === "'") {
+			const end = css.indexOf(c, i + 1);
+			if (end === -1 || /[\r\n\f]/.test(css.slice(i + 1, end))) return null;
+			strings.push(css.slice(i + 1, end));
+			code += '""';
+			i = end + 1;
+		} else {
+			code += c;
+			i++;
+		}
+	}
+	return { code, strings };
+}
+
+/** What a tweak's stylesheet may not contain anywhere, comments and strings included. */
+const FORBIDDEN_ANYWHERE: Array<[RegExp, string]> = [
+	[/</, 'Markup does not belong in a stylesheet: no `<` anywhere, comments and strings included.'],
+	[/\\/, 'Backslash escapes can hide anything else this gate refuses.'],
+];
+
+/** What its code may not contain, once comments are dropped and strings set apart. */
+const FORBIDDEN_IN_CODE: Array<[RegExp, string]> = [
 	[/@import\b/i, '`@import` loads more CSS from elsewhere.'],
 	[/url\s*\(/i, '`url()` makes a request: no images, fonts or anything else from anywhere.'],
 	[/image-set\s*\(/i, '`image-set()` makes a request.'],
@@ -51,21 +89,24 @@ const FORBIDDEN: Array<[RegExp, string]> = [
 	[/(?:^|[;{\s])behavior\s*:/i, '`behavior` attaches script in old browsers.'],
 	[/-moz-binding\b/i, '`-moz-binding` attaches script in old browsers.'],
 	[/(?:^|[;{\s])content\s*:/i, '`content` writes text onto the page: a tweak changes how the site looks, not what it says.'],
-	[/<\/?style|<\/?script|<!--/i, 'Markup does not belong in a stylesheet.'],
-	[/\\/, 'Backslash escapes can hide any of the above.'],
 ];
 
 /**
  * The static gate for a tweak's stylesheet: size, and nothing that makes a
- * request, runs script, writes text or hides any of those behind escapes.
+ * request, runs script, writes text or hides any of those behind escapes,
+ * comments or strings.
  */
 export function checkTweakCss(css: string, config: Pick<LabConfig, 'tweaks'>): CheckResult[] {
 	const max = config.tweaks?.maxBytes ?? DEFAULT_TWEAK_BYTES;
 	const bytes = Buffer.byteLength(css, 'utf8');
-	const stripped = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
-	const problems = FORBIDDEN.filter(([pattern]) => pattern.test(stripped)).map(([, why]) => why);
-	if (/\/\*/.test(stripped)) problems.push('A comment is not closed.');
-	if (stripped.trim() === '') problems.push('The stylesheet is empty.');
+	const problems = FORBIDDEN_ANYWHERE.filter(([pattern]) => pattern.test(css)).map(([, why]) => why);
+	const split = splitCss(css);
+	if (!split) {
+		problems.push('A comment or a string is not closed, or a string runs over a line.');
+	} else {
+		problems.push(...FORBIDDEN_IN_CODE.filter(([pattern]) => pattern.test(split.code)).map(([, why]) => why));
+		if (split.code.trim() === '') problems.push('The stylesheet is empty.');
+	}
 	return [
 		{ gate: 'static', check: 'static.tweak-size', passed: bytes <= max, message: `${bytes} bytes; the limit is ${max}.` },
 		{ gate: 'static', check: 'static.tweak-css', passed: problems.length === 0, message: problems.length === 0 ? 'Only styles: no requests, script or text.' : problems.join(' ') },

@@ -3,7 +3,7 @@ import type { LabConfig, RepoRef, RunningSite, Sandbox, Variant } from '@lab/cor
 import { serveDir } from './serve.ts';
 
 export { serveDir } from './serve.ts';
-export { CssInjectingProxy, injectStyle } from './inject.ts';
+export { CssInjectingProxy, TWEAK_STYLESHEET, injectStylesheet } from './inject.ts';
 export type { StaticServer } from './serve.ts';
 
 export interface LocalSandboxOptions {

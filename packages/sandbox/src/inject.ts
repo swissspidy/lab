@@ -1,8 +1,12 @@
 // A reverse proxy in front of a running site that adds a stylesheet to
 // every HTML page, after the site's own styles. It is how a personal tweak
 // is verified: the same site, the same verifier, with the tweak applied the
-// way a browser will apply it.
+// way a browser will apply it. The CSS is served from the proxy's own
+// origin and linked, never written into the page: a site's CSP that allows
+// only same-origin styles still applies it, and nothing in the CSS is ever
+// parsed as HTML.
 import { createServer } from 'node:http';
+import { Readable } from 'node:stream';
 import type { IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { CssInjector, RunningSite } from '@lab/core';
@@ -16,9 +20,12 @@ async function body(req: IncomingMessage): Promise<Buffer | undefined> {
 	return Buffer.concat(chunks);
 }
 
-/** Inserts the style element before `</head>`, or at the start when there is none. */
-export function injectStyle(html: string, css: string): string {
-	const tag = `<style data-lab-tweak>${css}</style>`;
+/** Where the proxy serves the tweak's CSS, on the site's own origin. */
+export const TWEAK_STYLESHEET = '/__lab-tweak.css';
+
+/** Links the tweak's stylesheet before `</head>`, after the site's own styles, or at the start when there is none. */
+export function injectStylesheet(html: string): string {
+	const tag = `<link rel="stylesheet" href="${TWEAK_STYLESHEET}" data-lab-tweak>`;
 	const at = html.search(/<\/head\s*>/i);
 	return at === -1 ? tag + html : html.slice(0, at) + tag + html.slice(at);
 }
@@ -27,6 +34,10 @@ export class CssInjectingProxy implements CssInjector {
 	async inject(site: RunningSite, css: string): Promise<RunningSite> {
 		const upstream = new URL(site.url);
 		const server = createServer(async (req, res) => {
+			if (new URL(req.url ?? '/', 'http://proxy').pathname === TWEAK_STYLESHEET) {
+				res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'no-store' }).end(req.method === 'HEAD' ? undefined : css);
+				return;
+			}
 			try {
 				const headers = new Headers();
 				for (const [name, value] of Object.entries(req.headers)) {
@@ -46,9 +57,18 @@ export class CssInjectingProxy implements CssInjector {
 				const location = answer.headers.get('location');
 				if (location) out.location = location.replace(upstream.origin, `http://${req.headers.host}`);
 				const type = answer.headers.get('content-type') ?? '';
-				let payload = Buffer.from(await answer.arrayBuffer());
-				if (type.includes('text/html')) payload = Buffer.from(injectStyle(payload.toString('utf8'), css));
-				res.writeHead(answer.status, out).end(req.method === 'HEAD' ? undefined : payload);
+				if (type.includes('text/html')) {
+					// Only pages are read whole, to add the link.
+					const page = injectStylesheet(await answer.text());
+					res.writeHead(answer.status, out).end(req.method === 'HEAD' ? undefined : page);
+					return;
+				}
+				// Everything else streams as it arrives (event streams, large files).
+				res.writeHead(answer.status, out);
+				if (req.method === 'HEAD' || !answer.body) return void res.end();
+				const stream = Readable.fromWeb(answer.body as never);
+				stream.on('error', () => res.destroy());
+				stream.pipe(res);
 			} catch {
 				if (!res.headersSent) res.writeHead(502);
 				res.end();

@@ -93,8 +93,14 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 		}
 		// Back to a path on this site only: never an open redirect.
 		const to = url.searchParams.get('to') ?? '/';
-		// Absolute, on this site's origin: Next.js refuses a relative Location from a proxy.
-		const location = new URL(to.startsWith('/') && !to.startsWith('//') && !to.includes('\\') ? to : '/', url.origin).href;
+		// Absolute, on this site's origin: Next.js refuses a relative Location from a proxy. The
+		// destination is parsed first and kept only if it is still on this origin: a parser drops
+		// tabs and newlines, so "/\t/evil.example" would otherwise become "//evil.example".
+		let destination: URL | null = null;
+		try {
+			destination = new URL(to, url.origin);
+		} catch {}
+		const location = to.startsWith('/') && destination?.origin === url.origin ? destination.href : new URL('/', url.origin).href;
 		const cookie = tweaks.length > 0 ? `${COOKIE_TWEAKS}=${tweaks.join(',')}; Path=/; Max-Age=${YEAR}; SameSite=Lax` : `${COOKIE_TWEAKS}=; Path=/; Max-Age=0; SameSite=Lax`;
 		return new Response(null, { status: 303, headers: { location, 'set-cookie': cookie, 'cache-control': 'no-store' } });
 	}

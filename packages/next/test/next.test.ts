@@ -176,7 +176,7 @@ describe('@lab/next', () => {
 			assert.equal(((await proxy(request(`http://site.test/_lab/tweak/${TW}`))) as Response).status, 404);
 			assert.equal(((await proxy(request('http://site.test/_lab/tweak/not-an-id'))) as Response).status, 404);
 			const known = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab() });
-			for (const to of ['https://evil.example/', '//evil.example/', '/\\evil.example']) {
+			for (const to of ['https://evil.example/', '//evil.example/', '/\\evil.example', '/\t/evil.example/', '/\n/evil.example/']) {
 				const res = (await known(request(`http://site.test/_lab/tweak/${TW}?to=${encodeURIComponent(to)}`))) as Response;
 				assert.equal(res.headers.get('location'), 'http://site.test/', to);
 			}

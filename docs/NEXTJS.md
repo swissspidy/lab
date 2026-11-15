@@ -60,6 +60,17 @@ LAB_TOKEN=... LAB_HOST=0.0.0.0 npx lab collect path/to/site --port 8081
 `GET /state` and `POST /beacon` are public; the proxy uses them.
 `PUT /state` and `GET /metrics` need the token.
 
+With `tweaks` in the config where `lab collect` runs, the collector also
+keeps personal tweaks:
+
+| Route | Who |
+| --- | --- |
+| `PUT /tweaks/<id>` | token: `lab tweak` stores a verified tweak |
+| `GET /tweaks/<id>.json` | token: the stored record |
+| `GET`, `HEAD /tweaks/<id>.css` | public: the stylesheet the proxy forwards to visitors |
+
+Without `tweaks`, these routes do not exist.
+
 ## 3. The config
 
 `lab.config.ts` for a server app:

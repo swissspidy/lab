@@ -69,6 +69,19 @@ describe('checkTweakCss', () => {
 		}
 	});
 
+	it('reads comments and strings as a browser does: a quoted comment marker hides nothing', () => {
+		assert.deepEqual(failing('body {\n\t--a: "/*";\n\tbackground: url(https://example.invalid/pixel);\n\t--b: "*/";\n}'), ['static.tweak-css']);
+		assert.deepEqual(failing('h1 { font-family: "a /* b */ c", serif; }'), [], 'a comment marker inside a string is text');
+		assert.deepEqual(failing("h1 { font-family: 'Helvetica Neue'; }"), []);
+		assert.deepEqual(failing('h1 { font-family: "never closed; }'), ['static.tweak-css']);
+		assert.deepEqual(failing('h1 { font-family: "two\nlines"; }'), ['static.tweak-css']);
+	});
+
+	it('refuses markup anywhere, comments included: the HTML parser does not know CSS comments', () => {
+		assert.deepEqual(failing('/* </style><script>document.documentElement.dataset.injected="yes"</script><style> */ body{color:red}'), ['static.tweak-css']);
+		assert.deepEqual(failing('h1 { font-family: "</style>"; }'), ['static.tweak-css']);
+	});
+
 	it('refuses an empty stylesheet and one over the size limit', () => {
 		assert.deepEqual(failing('/* nothing */'), ['static.tweak-css']);
 		assert.deepEqual(failing(`a { color: red; ${'b { color: blue } '.repeat(10)} }`, 50), ['static.tweak-size']);
