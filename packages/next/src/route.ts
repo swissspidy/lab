@@ -48,8 +48,9 @@ export function parseState(value: unknown): LabState {
 	// The collector never stores a share outside (0, 0.5]; anything else is not its state.
 	if (typeof share !== 'number' || !(share > 0 && share <= MAX_SHARE)) return { live: null };
 	if (origin !== undefined) {
+		if (typeof origin !== 'string') return { live: null };
 		try {
-			const url = new URL(String(origin));
+			const url = new URL(origin);
 			if (url.protocol !== 'http:' && url.protocol !== 'https:') return { live: null };
 		} catch {
 			return { live: null };

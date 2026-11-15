@@ -38,7 +38,7 @@ describe('@lab/next', () => {
 
 	it('parses only well-formed state; anything else serves the baseline', () => {
 		assert.deepEqual(parseState({ live: { experiment: 'exp-0001', share: 0.1, origin: 'https://v.example' } }).live?.origin, 'https://v.example');
-		for (const bad of [null, 'x', { live: { experiment: 'Exp 1', share: 0.1 } }, { live: { experiment: 'exp-0001', share: 2 } }, { live: { experiment: 'exp-0001', share: 0.6 } }, { live: { experiment: 'exp-0001', share: 0 } }, { live: { experiment: 'exp-0001', share: 0.1, origin: 'javascript:alert(1)' } }]) {
+		for (const bad of [null, 'x', { live: { experiment: 'Exp 1', share: 0.1 } }, { live: { experiment: 'exp-0001', share: 2 } }, { live: { experiment: 'exp-0001', share: 0.6 } }, { live: { experiment: 'exp-0001', share: 0 } }, { live: { experiment: 'exp-0001', share: 0.1, origin: 'javascript:alert(1)' } }, { live: { experiment: 'exp-0001', share: 0.1, origin: ['https://v.example'] } }]) {
 			assert.equal(parseState(bad).live, null, JSON.stringify(bad));
 		}
 	});

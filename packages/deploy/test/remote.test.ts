@@ -174,7 +174,7 @@ describe('readState', () => {
 			const write = (value: unknown) => writeFileSync(join(dir, 'state.json'), typeof value === 'string' ? value : JSON.stringify(value));
 			write({ live: { experiment: 'exp-0001', share: 0.2 } });
 			assert.deepEqual(readState(dir).live, { experiment: 'exp-0001', share: 0.2 });
-			for (const bad of ['{not json', { live: { experiment: 'exp-0001', share: 0.9 } }, { live: { experiment: 'exp-0001', share: 0.2, origin: 'javascript:alert(1)' } }, { nothing: true }]) {
+			for (const bad of ['{not json', { live: { experiment: 'exp-0001', share: 0.9 } }, { live: { experiment: 'exp-0001', share: 0.2, origin: 'javascript:alert(1)' } }, { live: { experiment: 'exp-0001', share: 0.2, origin: ['https://preview.example'] } }, { nothing: true }]) {
 				write(bad);
 				assert.equal(readState(dir).live, null, JSON.stringify(bad));
 			}

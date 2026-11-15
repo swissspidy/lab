@@ -54,8 +54,10 @@ export function parseDeployState(value: unknown): DeployState | null {
 	if (typeof l.experiment !== 'string' || !SAFE_ID.test(l.experiment)) return null;
 	if (typeof l.share !== 'number' || !(l.share > 0 && l.share <= 0.5)) return null;
 	if (l.origin !== undefined) {
+		// Only a string: anything else would pass through String() and then be dropped, keeping `live`.
+		if (typeof l.origin !== 'string') return null;
 		try {
-			if (!['http:', 'https:'].includes(new URL(String(l.origin)).protocol)) return null;
+			if (!['http:', 'https:'].includes(new URL(l.origin).protocol)) return null;
 		} catch {
 			return null;
 		}
