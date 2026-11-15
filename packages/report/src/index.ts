@@ -3,7 +3,7 @@
 // numbers said and what was decided. No scripts; every value is escaped,
 // because the ledger holds text the model and the site wrote.
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import type { CheckResult, LedgerEvent } from '@lab/core';
 
 const escape = (value: unknown): string =>
@@ -193,12 +193,15 @@ ${sections.join('\n') || '<p>The ledger is empty.</p>'}
 }
 
 /** Writes `index.html` to `outDir`, with the evidence screenshots copied next to it. */
-export function writeReport(events: LedgerEvent[], outDir: string, options: Omit<ReportOptions, 'evidenceHref'> = {}): string {
+export function writeReport(events: LedgerEvent[], outDir: string, options: Omit<ReportOptions, 'evidenceHref'> & { siteDir?: string } = {}): string {
 	mkdirSync(join(outDir, 'evidence'), { recursive: true });
 	const copied = new Map<string, string>();
+	const { siteDir, ...renderOptions } = options;
 	const html = renderReport(events, {
-		...options,
-		evidenceHref: (file) => {
+		...renderOptions,
+		evidenceHref: (recorded) => {
+			// The ledger records evidence relative to the site directory when it is inside it.
+			const file = isAbsolute(recorded) ? recorded : resolve(siteDir ?? '.', recorded);
 			if (!existsSync(file)) return null;
 			let rel = copied.get(file);
 			if (!rel) {

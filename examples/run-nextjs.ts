@@ -402,7 +402,7 @@ Known limits this week did not exercise:
 	const events = await ledger.history();
 	if (options.out) {
 		mkdirSync(options.out, { recursive: true });
-		writeReport(events, options.out, { title: 'Lab report: Driftwood (Next.js example)', generatedAt: now() });
+		writeReport(events, options.out, { title: 'Lab report: Driftwood (Next.js example)', generatedAt: now(), siteDir: repo });
 		writeFileSync(join(options.out, 'ledger.jsonl'), readFileSync(join(repo, LEDGER_FILE)));
 		if (week) writeFileSync(join(options.out, 'WEEK-ONE.md'), week.markdown);
 		log(`Report: ${join(options.out, 'index.html')}`);
