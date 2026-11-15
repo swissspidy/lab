@@ -1,5 +1,5 @@
 import { normalQuantile } from '@lab/core';
-import type { BucketCounts, BucketStats, LabConfig, Meter, TrafficEstimate } from '@lab/core';
+import type { BucketCounts, BucketStats, LabConfig, Meter, MeterReading, TrafficEstimate } from '@lab/core';
 import { SITE } from './metrics.ts';
 import type { MetricStore } from './metrics.ts';
 
@@ -62,22 +62,14 @@ export class StoreMeter implements Meter {
 		return out;
 	}
 
-	async read(experiment: string): Promise<BucketStats> {
+	async read(experiment: string): Promise<MeterReading> {
 		const totals = this.store.totals(experiment);
 		const current = this.store.intervalOf(this.now());
 		// The latest interval with data, up to the current one.
 		const latestIndex = this.store.intervals(experiment).findLast((i) => i <= current);
 		const latest = latestIndex === undefined ? null : this.store.totals(experiment, latestIndex, latestIndex);
 		const windows = latest ? [latest, totals] : [totals];
-		const first = this.store.intervals(experiment)[0];
-		return {
-			experiment,
-			baseline: totals.baseline,
-			variant: totals.variant,
-			latest,
-			guardrails: this.guardrails(windows),
-			days: first === undefined ? 0 : ((current - first + 1) * this.store.intervalMs) / 86_400_000,
-		};
+		return { experiment, baseline: totals.baseline, variant: totals.variant, latest, guardrails: this.guardrails(windows) };
 	}
 
 	/** Site-wide visits per day and conversion rate over the last seven days. */

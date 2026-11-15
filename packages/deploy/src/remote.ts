@@ -3,7 +3,7 @@
 //   GET  /state    public; the site's proxy reads it
 //   PUT  /state    needs the token; the deployer and the kill switch write it
 //   GET  /metrics  needs the token; the meter reads it
-import type { BucketStats, LabConfig, Meter, TrafficEstimate } from '@lab/core';
+import type { LabConfig, Meter, MeterReading, TrafficEstimate } from '@lab/core';
 import { StageError } from '@lab/core';
 import { parseDeployState, stateVersion } from './deployer.ts';
 import type { DeployState } from './deployer.ts';
@@ -73,7 +73,7 @@ export class RemoteMeter implements Meter {
 		return new StoreMeter({ store, config: this.options.config, ...(this.options.now ? { now: this.options.now } : {}) });
 	}
 
-	async read(experiment: string): Promise<BucketStats> {
+	async read(experiment: string): Promise<MeterReading> {
 		return (await this.meter()).read(experiment);
 	}
 

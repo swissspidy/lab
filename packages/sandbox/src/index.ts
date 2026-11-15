@@ -34,7 +34,7 @@ export class LocalSandbox implements Sandbox {
 		try {
 			// A server app runs its own server; anything else is served as static files.
 			const server = this.config.site.serve
-				? await startService(this.config.site.serve, build.work, this.options.timeoutMs ?? 120_000)
+				? await startService(this.config.site.serve, { cwd: build.work, timeoutMs: this.options.timeoutMs ?? 120_000 })
 				: await serveDir(build.outDir);
 			return {
 				url: server.url,

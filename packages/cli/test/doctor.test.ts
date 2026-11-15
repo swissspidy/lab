@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FileLedger } from '@lab/core';
+import type { LedgerEventInput } from '@lab/core';
 
 const run = promisify(execFile);
 const cli = join(import.meta.dirname, '..', 'src', 'index.ts');
@@ -64,7 +65,7 @@ describe('lab doctor', () => {
 		try {
 			const file = join(dir, 'lab', 'ledger.jsonl');
 			const ledger = new FileLedger(file);
-			await ledger.append({ type: 'proposed', experiment: 'exp-0001', siteCommit: 'abc', patchHash: null, payload: { source: 'agent' } });
+			await ledger.append({ type: 'proposed', experiment: 'exp-0001', siteCommit: 'abc', patchHash: null, payload: { source: 'agent' } } as LedgerEventInput);
 			let result = await lab('doctor', dir, '--json');
 			assert.equal(result.code, 0);
 			assert.deepEqual(JSON.parse(result.stdout).diagnostics.map((d: { code: string }) => d.code), ['ledger-experiment-open']);

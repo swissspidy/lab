@@ -14,7 +14,8 @@ import type { DeployState } from './deployer.ts';
 import { BUCKETS, EVENTS, SITE } from './metrics.ts';
 import type { BeaconEvent, Bucket, MetricStore } from './metrics.ts';
 
-export const COOKIE = 'lab_vid';
+/** The visitor id cookie; the same name as @lab/next's COOKIE_VISITOR. */
+export const COOKIE_VISITOR = 'lab_vid';
 export const BEACON_PATH = '/_lab/beacon';
 export const BEACON_SCRIPT = '/_lab/beacon.js';
 
@@ -104,11 +105,11 @@ export function createEdgeHandler(options: EdgeOptions): (req: IncomingMessage, 
 		if (url.pathname === BEACON_SCRIPT) return void res.writeHead(200, { 'content-type': TYPES['.js']!, 'cache-control': 'no-store' }).end(script);
 		if (url.pathname.startsWith('/_lab/')) return void res.writeHead(404).end();
 
-		let visitor = cookie(req, COOKIE);
+		let visitor = cookie(req, COOKIE_VISITOR);
 		const headers: Record<string, string> = { 'cache-control': 'no-store' };
 		if (!visitor || !/^[0-9a-f]{32}$/.test(visitor)) {
 			visitor = randomBytes(16).toString('hex');
-			headers['set-cookie'] = `${COOKIE}=${visitor}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly`;
+			headers['set-cookie'] = `${COOKIE_VISITOR}=${visitor}; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly`;
 		}
 		const state = readState(root);
 		const bucket: Bucket = state.live ? assignBucket(visitor, state.live.experiment, state.live.share) : 'baseline';

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { FileLedger, SETTLED, checkLedger, effectiveDeny, experimentStates, intentKey, loadConfig, matchesAny, parsePatch, runIteration, sha256 } from '@lab/core';
-import type { Builder, IterationResult, LabConfig } from '@lab/core';
+import type { Builder, IterationResult, LabConfig, LedgerEventInput } from '@lab/core';
 import { GraftSpecCheck } from '@lab/adapters';
 import { ModelBuilder, ModelProposer, ScriptedProvider } from '@lab/agent';
 import { LocalSandbox } from '@lab/sandbox';
@@ -97,7 +97,7 @@ describe('model-backed loop (M2)', () => {
 		// History: an experiment that shipped and was reverted.
 		const seed = { experiment: 'exp-0001', siteCommit: 'fixture', patchHash: sha256('seed') };
 		await ledger.append({ ...seed, type: 'proposed', patchHash: null, payload: { source: 'agent', spec: { intent: REVERTED_INTENT } } });
-		for (const type of ['built', 'verify_passed', 'approved', 'shipped', 'measured', 'reverted'] as const) await ledger.append({ ...seed, type, payload: {} });
+		for (const type of ['built', 'verify_passed', 'approved', 'shipped', 'measured', 'reverted'] as const) await ledger.append({ ...seed, type, payload: {} } as LedgerEventInput);
 
 		const patches: string[] = [];
 		const modelBuilder = new ModelBuilder({ provider, config });

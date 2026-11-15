@@ -165,6 +165,11 @@ export function validateConfig(raw: unknown): ConfigResult {
 	} as LabConfig;
 
 	// Value checks, now that the types are known to be right.
+	// A server app's build output is not its pages (for Next.js it is `.next`),
+	// so the routes to verify must be listed.
+	if (config.site.serve !== undefined && !config.site.pages?.length) {
+		error('config-pages-required', 'site.pages', 'A server app (`site.serve`) needs `site.pages`: the routes to verify, such as `[".", "docs", "pricing"]`.');
+	}
 	if (config.metric.kind !== 'conversion') {
 		error('config-metric-kind', 'metric.kind', 'v0 supports only `conversion` metrics: a binary outcome per visit.');
 	}

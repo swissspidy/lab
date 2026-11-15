@@ -73,6 +73,13 @@ describe('validateConfig', () => {
 		assert.deepEqual(codes({ ...valid(), autonomy: 'propose-only' }), []);
 	});
 
+	it('requires the routes to verify for a server app, whose build output is not its pages', () => {
+		const server = (pages?: string[]) => ({ ...valid(), site: { ...valid().site, serve: 'npm start', ...(pages ? { pages } : {}) } });
+		assert.deepEqual(codes(server()), ['config-pages-required']);
+		assert.deepEqual(codes(server([])), ['config-pages-required']);
+		assert.deepEqual(codes(server(['.', 'docs'])), []);
+	});
+
 	it('supports only conversion metrics', () => {
 		assert.deepEqual(codes({ ...valid(), metric: { id: 'revenue', kind: 'continuous' } }), ['config-metric-kind']);
 	});

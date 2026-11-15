@@ -76,7 +76,9 @@ export default {
 };
 ```
 
-`serve` lets the sandbox verify the app as it runs in production. `deploy`
+`serve` lets the sandbox verify the app as it runs in production. `pages` is
+required with it: a server app's build output (`.next`) is not a list of its
+pages, so the config names the routes to verify (`config-pages-required`). `deploy`
 publishes a variant on any host with preview deployments; only the variables
 named in `env` reach the command. On Vercel, preview deployments must be
 reachable by the proxy: turn off Deployment Protection for previews, or use a

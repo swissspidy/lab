@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FileLedger, sha256 } from '@lab/core';
+import type { LedgerEventInput } from '@lab/core';
 import { experimentViews, renderReport, writeReport } from '../src/index.ts';
 
 const PATCH = 'diff --git a/src/a.html b/src/a.html\nindex 1..2 100644\n--- a/src/a.html\n+++ b/src/a.html\n@@ -1 +1 @@\n-<h1>Old</h1>\n+<h1>New</h1>\n';
@@ -18,7 +19,7 @@ async function ledgerWith(dir: string, screenshot: string) {
 	await ledger.append({ ...a, type: 'approved', payload: { by: 'pascal' } });
 	await ledger.append({ ...a, type: 'shipped', payload: { share: 0.1 } });
 	const stats = { baseline: { visits: 4000, conversions: 400 }, variant: { visits: 4000, conversions: 520 } };
-	await ledger.append({ ...a, type: 'measured', payload: { day: 1, stats, probability: 0.999, decision: { action: 'keep', reason: 'P = 0.999 ≥ 0.95.' } } });
+	await ledger.append({ ...a, type: 'measured', payload: { day: 1, stats, probability: 0.999, decision: { action: 'keep', reason: 'P = 0.999 ≥ 0.95.' } } } as LedgerEventInput);
 	await ledger.append({ ...a, type: 'kept', payload: { reason: 'P = 0.999 ≥ 0.95.' } });
 	const b = { experiment: 'exp-0002', siteCommit: 'c', patchHash: sha256('x') };
 	await ledger.append({ ...b, type: 'proposed', patchHash: null, payload: { source: 'agent', spec: { hypothesis: 'h', intent: 'Change the price.', acceptance: ['x'], expectedEffect: 'next_step_click up' } } });

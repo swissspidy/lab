@@ -125,7 +125,7 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 			let problems: Diagnostic[];
 			try {
 				const host = websiteHost(config, listSiteFiles(site.dir, config), sitePages(config, baselineSite.root));
-				problems = deps.specCheck.check(spec, host).filter((d) => d.severity === 'error');
+				problems = (await deps.specCheck.check(spec, host)).filter((d) => d.severity === 'error');
 			} catch (error) {
 				const failure = describe(error);
 				await append({ ...base, type: 'aborted', payload: { stage: 'spec', ...failure } });

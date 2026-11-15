@@ -100,7 +100,7 @@ export class LocalServePublisher implements VariantPublisher {
 	async publish(variant: Variant): Promise<string> {
 		const build = await buildInScratch(variant, this.config);
 		try {
-			const service = await startService(this.config.site.serve!, build.work, 120_000);
+			const service = await startService(this.config.site.serve!, { cwd: build.work, timeoutMs: 120_000 });
 			this.running.set(variant.experiment, { build, service });
 			return service.url.replace(/\/$/, '');
 		} catch (error) {
@@ -144,7 +144,7 @@ export class CommandPublisher implements VariantPublisher {
 	async publish(variant: Variant): Promise<string> {
 		const build = await buildInScratch(variant, this.config);
 		try {
-			const result = await runFile('sh', ['-c', this.config.deploy!.publish], build.work, 600_000, { ...this.env, LAB_EXPERIMENT: variant.experiment });
+			const result = await runFile('sh', ['-c', this.config.deploy!.publish], { cwd: build.work, timeoutMs: 600_000, env: { ...this.env, LAB_EXPERIMENT: variant.experiment } });
 			if (result.code !== 0) throw new StageError('deploy-publish-failed', `The publish command failed with exit code ${result.code}.`, result.output);
 			const url = result.output.trim().split('\n').map((l) => l.trim()).findLast(Boolean) ?? '';
 			try {
@@ -161,7 +161,7 @@ export class CommandPublisher implements VariantPublisher {
 
 	async retire(experiment: string): Promise<void> {
 		if (!this.config.deploy?.retire) return;
-		const result = await runFile('sh', ['-c', this.config.deploy.retire], process.cwd(), 300_000, { ...this.env, LAB_EXPERIMENT: experiment });
+		const result = await runFile('sh', ['-c', this.config.deploy.retire], { cwd: process.cwd(), timeoutMs: 300_000, env: { ...this.env, LAB_EXPERIMENT: experiment } });
 		if (result.code !== 0) {
 			throw new StageError('deploy-retire-failed', result.timedOut ? 'The retire command timed out.' : `The retire command failed with exit code ${result.code}.`, result.output);
 		}

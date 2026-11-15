@@ -1,6 +1,6 @@
 export { ReferenceDeployer, parseDeployState, readState, stateVersion, writeState } from './deployer.ts';
 export type { DeployState } from './deployer.ts';
-export { BEACON_PATH, BEACON_SCRIPT, COOKIE, assignBucket, beaconScript, createEdgeHandler, recordBeacon, startEdgeServer } from './edge.ts';
+export { BEACON_PATH, BEACON_SCRIPT, COOKIE_VISITOR, assignBucket, beaconScript, createEdgeHandler, recordBeacon, startEdgeServer } from './edge.ts';
 export { startCollector } from './collector.ts';
 export type { CollectorOptions } from './collector.ts';
 export { CommandPublisher, FileState, LocalServePublisher, OriginDeployer } from './origin.ts';

@@ -16,11 +16,15 @@ export interface DeployState {
 	killedAt?: string;
 }
 
+/**
+ * The local state. A missing, unreadable or malformed state.json serves no
+ * variant: the same rule as the edge and the proxy, so a hand-edited file
+ * with a bad share or origin can never route visitors.
+ */
 export const readState = (root: string): DeployState => {
 	try {
-		return JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as DeployState;
+		return parseDeployState(JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'))) ?? { live: null };
 	} catch {
-		// No state, or an unreadable one: serve no variant.
 		return { live: null };
 	}
 };

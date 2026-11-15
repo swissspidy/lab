@@ -1,5 +1,56 @@
 # Progress
 
+## After M5: API design review (2026-11-15)
+
+A read of every package's public surface for contracts that mislead,
+duplicate or let wrong values through.
+
+**Fixed**
+
+- Ledger writes are typed. `LedgerEventInput` is a union over event types,
+  each with its payload (`LedgerPayloads`): a `shipped` event without a
+  share, or a `reverted` event with an unknown reason, no longer compiles.
+  Payloads read back stay untrusted.
+- `Meter.read` returns a `MeterReading`: counts and guardrails, no `days`.
+  `StoreMeter` used to compute days from the first data point, which the
+  lifecycle then silently replaced with the days since `shipped`. Only the
+  lifecycle computes it now.
+- `SpecCheck.check` may return a promise, so a check can use Graft's
+  asynchronous surface validation.
+- `@lab/next`: `decide()` and `Decision` are `route()` and `RouteDecision`,
+  so they no longer share names with the keep/revert `Decider` and
+  `Decision` in `@lab/core`. No live experiment is `experiment: null`, not
+  `''`. `parseState` accepts only a share in (0, 0.5], as the collector does.
+- `@lab/deploy`: `readState` validates `state.json` with `parseDeployState`
+  instead of casting it, so a hand-edited file with a bad share or origin
+  serves the baseline. `COOKIE` is `COOKIE_VISITOR`, the name `@lab/next`
+  uses.
+- Config: `site.serve` without `site.pages` is an error
+  (`config-pages-required`). Without it the verifier looked for HTML files
+  in a server app's build output (`.next`) and verified those.
+- `runCommand`, `runFile` and `startService` take an options object
+  (`{ cwd, timeoutMs, env }`) instead of four or five positional arguments.
+- `approve` takes the lifecycle's clock (`now`) like `ship` and `measure`.
+
+**Verified**
+
+- `npm run check`: 179 tests, including new ones for each change (a
+  malformed `state.json`, the share bounds and `null` experiment in the
+  proxy, an async spec check, the server-app pages rule, the approval
+  clock).
+- `npm run test:nextjs`: the static loop, the unattended week and the proxy
+  end to end.
+
+**Not changed**
+
+- `@lab/next` keeps its own copy of the bucketing function and protocol
+  constants instead of importing `@lab/deploy`: the proxy runs inside the
+  site's bundle and must not pull in the lab's Node-only code. A test keeps
+  the two bucketing functions identical.
+- A failed `deployer.ship` leaves the experiment `approved`, so the next run
+  retries it. Recording an abort would turn a transient host error into a
+  lost experiment.
+
 ## After M5: the website as a Graft host (2026-11-15)
 
 Pascal asked whether the lab now follows Graft's principles. Partly: specs
