@@ -28,6 +28,11 @@ const HOUR = 3_600_000;
  * How a simulated visitor reacts to the page it is served. These are the
  * "true effects" the loop has to discover; it never sees them.
  */
+// Commits are dated on the simulated clock, so their hashes (and the ledger) are reproducible.
+function datedCommits(at: number): void {
+	process.env.GIT_AUTHOR_DATE = process.env.GIT_COMMITTER_DATE = new Date(at).toISOString();
+}
+
 export const VISITOR_MODEL = {
 	baseRate: 0.1,
 	docsInMainNav: 1.25,
@@ -90,6 +95,7 @@ function makeRepo(): string {
 	});
 	if (!existsSync(join(example, 'node_modules'))) throw new Error('Run `npm install` in examples/nextjs first.');
 	execFileSync('cp', ['-a', join(example, 'node_modules'), join(repo, 'node_modules')]);
+	datedCommits(Date.UTC(2026, 10, 1));
 	const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
 	git('init', '-q');
 	git('add', '-A');
@@ -199,7 +205,10 @@ export async function runNextLoop(options: RunOptions = {}): Promise<RunResult> 
 			meter: new StoreMeter({ store, config, now }),
 			decider: new BetaBinomialDecider(config),
 			now,
-			promote: async (variant) => void commits.push(gitPromote(repo, variant)),
+			promote: async (variant) => {
+				datedCommits(clock);
+				commits.push(gitPromote(repo, variant));
+			},
 		});
 
 	let browserConversions = 0;
@@ -233,6 +242,8 @@ export async function runNextLoop(options: RunOptions = {}): Promise<RunResult> 
 				const before = store.totals(id);
 				for (let i = 0; i < 4; i++) {
 					const context = await theBrowser.newContext();
+					// A fixed visitor id, so these visits land in the same bucket on every run.
+					await context.addCookies([{ name: 'lab_vid', value: 'f'.repeat(31) + String(i), url: edgeUrl }]);
 					const page = await context.newPage();
 					await page.goto(edgeUrl);
 					await page.getByRole('link', { name: 'Get started' }).click();
@@ -287,6 +298,7 @@ export async function runNextLoop(options: RunOptions = {}): Promise<RunResult> 
 		// The site owner switches to auto and commits the change.
 		const configFile = join(repo, 'lab.config.ts');
 		writeFileSync(configFile, readFileSync(configFile, 'utf8').replace("autonomy: 'gated'", "autonomy: 'auto'"));
+		datedCommits(clock);
 		execFileSync('git', ['-c', 'user.name=Site owner', '-c', 'user.email=owner@example.invalid', 'commit', '-q', '--no-gpg-sign', '-am', 'Switch the lab to auto'], { cwd: repo });
 		config = validateConfig({ ...config, autonomy: 'auto' }).config as LabConfig;
 		const entry = autonomyEntry(await ledger.history());
