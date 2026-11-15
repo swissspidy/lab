@@ -43,7 +43,7 @@ jobs:
           if-no-files-found: ignore
 
   nextjs:
-    name: Next.js example, full loop
+    name: Next.js examples (static export loop, server proxy)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -57,8 +57,50 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             examples/nextjs/package-lock.json
+            examples/nextjs-proxy/package-lock.json
       - run: npm ci
       - run: npm ci --prefix examples/nextjs
+      - run: npm ci --prefix examples/nextjs-proxy
       - run: npx playwright install --with-deps chromium
       - run: npm run lab -- doctor examples/nextjs
       - run: npm run test:nextjs
+
+  action:
+    name: GitHub Action, dry run on the fixture
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: doctor
+        uses: ./
+        with:
+          site: fixtures/site
+          command: doctor
+      - name: run --dry, replaying a known-good patch
+        id: run
+        uses: ./
+        with:
+          site: fixtures/site
+          command: run
+          dry: 'true'
+          replay: fixtures/good/nav-docs
+          commit: 'false'
+      - name: The dry run passed Verify
+        env:
+          CODE: ${{ steps.run.outputs.exit-code }}
+        run: test "$CODE" = 0
+      - name: run --dry, replaying a breakage
+        id: breakage
+        uses: ./
+        with:
+          site: fixtures/site
+          command: run
+          dry: 'true'
+          replay: fixtures/breakages/changed-price
+          commit: 'false'
+      - name: The breakage was rejected
+        env:
+          CODE: ${{ steps.breakage.outputs.exit-code }}
+        run: test "$CODE" = 1

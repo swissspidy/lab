@@ -16,10 +16,13 @@ append-only ledger in the site's repository.
 npm run lab -- kill path/to/site
 ```
 
-Every variant share goes to 0% at once, without a build or a deploy: the
-edge reads the host state on each request. It works even when the config or
-the ledger is broken; it records the kill in the ledger afterwards when it
-can.
+Every variant share goes to 0% without a build or a deploy. On the reference
+host it takes effect on the next request: the edge reads the state on each
+one. A Next.js site's proxy caches the state, so there it takes effect within
+the cache time (5 seconds by default, `cacheMs`). It works even when the
+config or the ledger is broken, and records the kill in the ledger afterwards
+when it can. With `LAB_URL` set, it needs `LAB_TOKEN` too, and refuses to run
+otherwise rather than kill only a local copy.
 
 ## Try it in two minutes
 
@@ -51,6 +54,12 @@ and a simulated clock:
 Nothing has met real visitors or a real model yet. See
 [docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
 [docs/runs/nextjs/index.html](docs/runs/nextjs/index.html).
+
+## On a real Next.js site
+
+A `proxy.js` with `@lab/next` serves the experiments at request time, a small
+always-on collector keeps the state and the counts, and a GitHub Action runs
+the loop on a schedule. See [docs/NEXTJS.md](docs/NEXTJS.md).
 
 ## Try it on a Next.js site
 
@@ -150,7 +159,9 @@ passes the same suite in the same run:
 - `packages/deploy`: the reference deployer, edge server, beacon and meter.
 - `packages/report`: the static ledger viewer.
 - `packages/adapters`: adapters to Graft (and later Sandburg and Assay).
+- `packages/next`: `@lab/next`, the proxy helper and beacon for Next.js sites.
 - `packages/cli`: the `lab` command.
+- `action.yml`: the GitHub Action.
 - `fixtures/sim`: the traffic simulator.
 - `fixtures/site`: a small static site with two planted flaws.
 - `fixtures/good`, `fixtures/breakages`: patches that must pass, and patches

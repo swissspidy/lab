@@ -1,6 +1,9 @@
 // Builds a site, or a patched copy of it, in a scratch directory. Shared by
 // the sandbox (to test) and the deployer (to ship), so both build the same way.
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';
@@ -17,10 +20,72 @@ export function runCommand(command: string, cwd: string, timeoutMs: number): Pro
 	return runFile('sh', ['-c', command], cwd, timeoutMs);
 }
 
+export interface Service {
+	url: string;
+	stop(): Promise<void>;
+}
+
+/** A free TCP port on 127.0.0.1. */
+export async function freePort(): Promise<number> {
+	const server = createServer();
+	await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+	const { port } = server.address() as AddressInfo;
+	await new Promise<void>((done) => server.close(() => done()));
+	return port;
+}
+
+/**
+ * Starts a site-owned server command (`site.serve`) on a free port, with the
+ * same stripped environment as builds plus `PORT` (and `extraEnv`, which the
+ * lab passes only for the production baseline), and waits until it answers.
+ */
+export async function startService(command: string, cwd: string, timeoutMs: number, extraEnv: Record<string, string> = {}): Promise<Service> {
+	const port = await freePort();
+	const env: Record<string, string> = { CI: '1', NODE_ENV: 'production', ...extraEnv, PORT: String(port), HOSTNAME: '127.0.0.1' };
+	for (const key of PASS_ENV) if (process.env[key]) env[key] = process.env[key]!;
+	const child: ChildProcess = spawn('sh', ['-c', command], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+	let output = '';
+	const collect = (chunk: Buffer) => {
+		output = (output + chunk.toString()).slice(-20_000);
+	};
+	child.stdout?.on('data', collect);
+	child.stderr?.on('data', collect);
+	let exited = false;
+	child.on('exit', () => {
+		exited = true;
+	});
+	const stop = async () => {
+		if (exited) return;
+		const done = new Promise<void>((settle) => child.once('exit', () => settle()));
+		try {
+			process.kill(-child.pid!, 'SIGTERM');
+		} catch {
+			child.kill('SIGTERM');
+		}
+		const timer = setTimeout(() => {
+			try {
+				process.kill(-child.pid!, 'SIGKILL');
+			} catch {}
+		}, 5000);
+		await done;
+		clearTimeout(timer);
+	};
+	const url = `http://127.0.0.1:${port}/`;
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (exited) throw new StageError('sandbox-serve-failed', 'The serve command exited before it answered.', output);
+		const ok = await fetch(url, { redirect: 'manual' }).then((r) => r.status < 500, () => false);
+		if (ok) return { url, stop };
+		await new Promise((r) => setTimeout(r, 250));
+	}
+	await stop();
+	throw new StageError('sandbox-serve-failed', `The serve command did not answer on port ${port} within ${Math.round(timeoutMs / 1000)} s.`, output);
+}
+
 /** Runs a program with literal arguments, no shell: paths are never interpreted. */
-export function runFile(file: string, args: string[], cwd: string, timeoutMs: number): Promise<{ code: number | null; output: string; timedOut: boolean }> {
+export function runFile(file: string, args: string[], cwd: string, timeoutMs: number, extraEnv: Record<string, string> = {}): Promise<{ code: number | null; output: string; timedOut: boolean }> {
 	return new Promise((done) => {
-		const env: Record<string, string> = { CI: '1', NODE_ENV: 'production' };
+		const env: Record<string, string> = { CI: '1', NODE_ENV: 'production', ...extraEnv };
 		for (const key of PASS_ENV) if (process.env[key]) env[key] = process.env[key]!;
 		const child = spawn(file, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
 		let output = '';

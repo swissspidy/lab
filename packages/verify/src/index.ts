@@ -105,7 +105,7 @@ export class BrowserVerifier implements Verifier {
 	}
 
 	private async suite(browser: Browser, site: RunningSite, invariants: Invariant[], label: string, evidenceDir: string): Promise<SuiteRun> {
-		const pages = htmlPages(site.root);
+		const pages = this.config.site.pages ?? htmlPages(site.root);
 		const viewports = this.config.viewports;
 		const jobs = pages.flatMap((page) => viewports.map((viewport) => ({ page, viewport })));
 		const measurements = await pool(jobs, this.concurrency, (j) => measurePage(browser, site.url, j.page, j.viewport, axeSource));

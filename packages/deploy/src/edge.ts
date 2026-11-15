@@ -10,6 +10,7 @@ import { extname, join } from 'node:path';
 import { resolveStatic } from '@lab/core';
 import type { LabConfig } from '@lab/core';
 import { readState } from './deployer.ts';
+import type { DeployState } from './deployer.ts';
 import { BUCKETS, EVENTS, SITE } from './metrics.ts';
 import type { BeaconEvent, Bucket, MetricStore } from './metrics.ts';
 
@@ -58,6 +59,23 @@ function cookie(req: IncomingMessage, name: string): string | undefined {
 	return undefined;
 }
 
+/**
+ * Records one beacon body (`{ e, b, k }`). Counts it against the experiment
+ * only when that experiment is live; otherwise against the site as a whole.
+ * Returns false for a malformed beacon.
+ */
+export function recordBeacon(body: string, state: DeployState, store: MetricStore, at: Date): boolean {
+	try {
+		const { e, b, k } = JSON.parse(body) as { e: unknown; b: unknown; k: unknown };
+		if (!BUCKETS.includes(b as Bucket) || !EVENTS.includes(k as BeaconEvent)) return false;
+		const experiment = typeof e === 'string' && e !== '' && state.live?.experiment === e ? e : SITE;
+		store.record(experiment, experiment === SITE ? 'baseline' : (b as Bucket), k as BeaconEvent, at);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export interface EdgeOptions {
 	root: string;
 	store: MetricStore;
@@ -79,18 +97,7 @@ export function createEdgeHandler(options: EdgeOptions): (req: IncomingMessage, 
 				body += chunk.toString();
 				if (body.length > 1024) req.destroy();
 			});
-			req.on('end', () => {
-				try {
-					const { e, b, k } = JSON.parse(body) as { e: unknown; b: unknown; k: unknown };
-					const state = readState(root);
-					const experiment = typeof e === 'string' && e !== '' && state.live?.experiment === e ? e : SITE;
-					if (!BUCKETS.includes(b as Bucket) || !EVENTS.includes(k as BeaconEvent)) throw new Error('invalid');
-					store.record(experiment, experiment === SITE ? 'baseline' : (b as Bucket), k as BeaconEvent, now());
-					res.writeHead(204).end();
-				} catch {
-					res.writeHead(400).end();
-				}
-			});
+			req.on('end', () => void res.writeHead(recordBeacon(body, readState(root), store, now()) ? 204 : 400).end());
 			return;
 		}
 		if (req.method !== 'GET' && req.method !== 'HEAD') return void res.writeHead(405).end();

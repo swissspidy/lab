@@ -34,6 +34,14 @@ export async function doctor(path: string): Promise<DoctorReport> {
 			}
 		}
 	}
+	if (loaded.config?.site.serve && !loaded.config.deploy) {
+		diagnostics.push({
+			code: 'config-deploy-missing',
+			severity: 'warning',
+			path: 'deploy',
+			message: 'This is a server app (`site.serve`) without `deploy.publish`: `lab run` can verify variants but cannot ship them. Add a publish command for your host.',
+		});
+	}
 	if (loaded.config?.autonomy === 'auto' && ledgerDiagnostics.length === 0) {
 		for (const check of autonomyEntry(events).checks) {
 			if (!check.met) diagnostics.push({ code: `autonomy-entry-${check.id}`, severity: 'warning', path: 'autonomy', message: check.detail });

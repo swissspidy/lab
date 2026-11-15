@@ -1,5 +1,65 @@
 # Progress
 
+## After M5: Next.js proxy and a GitHub Action (2026-11-15)
+
+Pascal asked why the lab is a command and not something that runs in the
+site. The parts that build, verify, propose and promote need a machine
+(a filesystem, git, headless Chromium, a model key); the part that serves
+variants runs at request time. So the lab now has both halves.
+
+**Built**
+
+- `@lab/next`: `createLabProxy()` for Next.js 16 `proxy.js` (sticky
+  bucketing identical to the reference host, rewrites of pages and `_next`
+  assets to the variant's origin, beacon forwarding, the kill switch through
+  a cached state read, baseline on any failure, never rewrites to its own
+  host, does nothing without `LAB_URL`), and `labBeaconScript()`. No
+  dependency on Next.js: `NextResponse` is passed in.
+- The collector (`lab collect`): public `GET /state` and `POST /beacon`;
+  token-protected `PUT /state` (validated: share at most 0.5, http(s)
+  origins only) and `GET /metrics`.
+- `OriginDeployer` with a pluggable `VariantPublisher` and state store
+  (local or `RemoteState`); `CommandPublisher` for `deploy.publish` (preview
+  deployments on any host; only `deploy.env` variables reach it);
+  `LocalServePublisher` for local runs; `RemoteMeter`.
+- Server mode for the sandbox and verifier: `site.serve` (run the built app
+  on `$PORT`) and `site.pages`.
+- CLI: `lab collect`; with `LAB_URL` and `LAB_TOKEN`, `run`, `status` and
+  `kill` use the remote collector.
+- `action.yml`: one step of the loop per run, approval through
+  `workflow_dispatch` (the GitHub user is the approver), the ledger and kept
+  changes committed back. `docs/examples/lab-workflow.yml` and
+  `docs/NEXTJS.md`.
+- `examples/nextjs-proxy`: the Driftwood site as a Next.js server app with
+  `proxy.js`.
+
+**Verified**
+
+- `examples/test/nextjs-proxy.test.ts`: server-mode verification, approval,
+  the variant on its own `next start`, real Chromium visitors through the
+  production server's proxy (variant pages, assets and interactivity for the
+  variant bucket; production for the baseline bucket; no failed requests),
+  beacons per bucket at the collector, the kill switch within the cache time.
+- Unit tests for the proxy (bucketing parity, state parsing, rewrites,
+  failure modes, kill switch, self-host guard, beacon forwarding), the
+  collector's token and validation, `RemoteState`, `RemoteMeter`,
+  `CommandPublisher`, and the CLI in remote mode.
+- The action's run step, simulated locally; a CI job runs the action itself
+  on the fixture (doctor, a passing and a rejected dry run).
+
+**Found on the way**
+
+- A variant deployment runs the same `proxy.js`; unconfigured, it still set
+  `lab_exp` and `lab_bucket` cookies, which came back through the rewrite
+  and overwrote the real ones, so variant beacons counted for the site. An
+  unconfigured proxy now changes nothing (but still answers beacons with
+  204, so pages see no 404).
+
+**Not verified**
+
+- The action on a real site with a real collector and a real host's preview
+  deployments; the Vercel command in the docs has not been run.
+
 ## M5: One unattended week, rehearsed on the local Next.js site (2026-11-14)
 
 A rehearsal of M5 on `examples/nextjs`, with synthetic visitors on a

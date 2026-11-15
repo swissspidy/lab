@@ -179,8 +179,14 @@ export type Decision =
 export type Autonomy = 'propose-only' | 'gated' | 'auto';
 
 export interface LabConfig {
-	/** `check` is an optional lint and type check command, run before `build`. */
-	site: { repo: string; build: string; outDir: string; check?: string };
+	/**
+	 * `check` is an optional lint and type check command, run before `build`.
+	 * `serve` runs a built app that needs a server (a Next.js app that is not a
+	 * static export): it must listen on `$PORT`. Without it, `outDir` is served
+	 * as static files. `pages` lists the routes to verify; without it, every
+	 * HTML file in `outDir` is a page.
+	 */
+	site: { repo: string; build: string; outDir: string; check?: string; serve?: string; pages?: string[] };
 	metric: { id: string; kind: 'conversion' };
 	guardrailMetrics: string[];
 	allow: string[];
@@ -201,6 +207,13 @@ export interface LabConfig {
 	limits: { maxChangedLines: number; maxFiles: number };
 	viewports: Array<{ width: number; height: number }>;
 	autonomy: Autonomy;
+	/**
+	 * How variants of a server app are published (OriginDeployer): `publish`
+	 * runs in a built scratch copy and prints the variant URL as its last line;
+	 * `retire` takes it down. Both get LAB_EXPERIMENT, and only the environment
+	 * variables named in `env` (deploy tokens).
+	 */
+	deploy?: { publish: string; retire?: string; env?: string[] };
 }
 
 export const LEDGER_EVENT_TYPES = [
