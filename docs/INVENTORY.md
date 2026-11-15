@@ -13,7 +13,7 @@ All three are Apache-2.0, ESM only, TypeScript, and target Node 24.
 | --- | --- | --- | --- |
 | Propose (spec format) | Graft | Yes, since Graft ADR 0015: host `website` | Specs are Graft specs; Graft's `validateSpec` checks them against a surface generated from the site (`@lab/adapters`) |
 | Sandbox | Sandburg | No: no URL handed out, dev servers only | Built-in: build, then serve `outDir` on a loopback port |
-| Verify (invariants) | Assay | Partial: deterministic checks fit, but need scripted actions and reference snapshots | Built-in Playwright invariants first; Assay adapter for compiled invariants in M4 |
+| Verify (invariants) | Assay | Yes, for invariants with a scripted task: checks are mined from the baseline with no model | Assay invariants next to hand-written ones (`@lab/adapters`, `lab invariants compile`) |
 | Verify (budgets) | none | No | Built-in: aXe, console, failed requests, overflow, Lighthouse |
 
 ## Graft
@@ -117,6 +117,9 @@ which fits "invariants are created once and frozen".
 - No aXe, Lighthouse or console-error checks.
 - Abstain has no equivalent in the lab's pass or fail. The lab treats
   abstain as fail.
+- Mining needs the expected text quoted in the outcome, phrased as "The page
+  shows \"…\"". "The status reads \"…\"" or "confirms" did not mine
+  (2026-11-15, Assay `7c04784`).
 - Compiling a variant's acceptance criteria needs a model and a reference run
   of the variant, which is circular for an unverified variant. Acceptance
   checks have to be written from the criteria, before the variant is seen.
@@ -142,4 +145,4 @@ which fits "invariants are created once and frozen".
 | --- | --- | --- |
 | Graft | Added (`@lab/adapters`) | Its parser is published as `@swissspidy/graft-core` 0.1.1 and reads lab specs written in its Markdown format. Graft has no writer, so the lab writes the Markdown itself. |
 | Sandburg | Not added | No API returns a URL for a running site, and it serves dev servers, not built output. Published version: 0.2.0. |
-| Assay | Not added | Not published to npm (404 on 2026-11-14), and no aXe, console or Lighthouse checks. Its deterministic checks would fit the invariants gate once it is published. |
+| Assay | Added for invariants (2026-11-15), from a git commit | Not yet on npm; installed from `github:swissspidy/assay` at a pinned commit, which builds on install. Compiling with `discovery: 'mine-only'` and `rubric: 'deterministic'` needs no model. Budgets stay built in: Assay has no aXe, console or Lighthouse checks. |

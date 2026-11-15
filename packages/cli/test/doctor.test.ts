@@ -60,6 +60,20 @@ describe('lab doctor', () => {
 		}
 	});
 
+	it('flags an Assay invariant whose check set was edited after it was locked', async () => {
+		const dir = copyFixture();
+		try {
+			const file = join(dir, 'lab', 'invariants', 'signup-submits.checks.json');
+			writeFileSync(file, readFileSync(file, 'utf8').replace('"ignoreCase": true', '"ignoreCase": false'));
+			const result = await lab('doctor', dir, '--json');
+			assert.equal(result.code, 1);
+			const diagnostics = JSON.parse(result.stdout).diagnostics as Array<{ code: string; path: string }>;
+			assert.deepEqual(diagnostics.map((d) => [d.code, d.path]), [['invariant-lock-broken', 'invariants.signup-submits']]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('checks the ledger and flags an edited one', async () => {
 		const dir = copyFixture();
 		try {
