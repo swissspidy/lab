@@ -21,6 +21,16 @@ export function parseTweaks(cookie: string | undefined): string[] {
 
 export const isTweakId = (id: string): boolean => TWEAK_ID.test(id);
 
+/**
+ * The stylesheets of a visitor's tweaks, from the lab_tweaks cookie, for a
+ * server-rendered layout to put in <head> so the tweaks apply before the
+ * first paint. Render each as `<link rel="stylesheet" href={href}
+ * data-lab-tweak={id} />`; the beacon script skips the ones already there.
+ */
+export function tweakStylesheets(cookie: string | undefined): Array<{ id: string; href: string }> {
+	return parseTweaks(cookie).map((id) => ({ id, href: `${TWEAK_CSS}${id}.css` }));
+}
+
 export type Bucket = 'baseline' | 'variant';
 
 /** What the lab's state endpoint returns. `origin` is where the variant is served. */

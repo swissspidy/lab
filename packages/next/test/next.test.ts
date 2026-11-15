@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignBucket as hostBucket } from '@lab/deploy';
-import { assignBucket, createLabProxy, labBeaconScript, parseState, parseTweaks, route } from '../src/index.ts';
+import { assignBucket, createLabProxy, labBeaconScript, parseState, parseTweaks, route, tweakStylesheets } from '../src/index.ts';
 import type { LabState } from '../src/index.ts';
 
 type Call = { kind: 'next' | 'rewrite'; to?: string; cookies: Record<string, string> };
@@ -202,6 +202,11 @@ describe('@lab/next', () => {
 			assert.equal(calls[0]!.cookies.lab_exp, '');
 			assert.equal(calls[0]!.cookies.lab_bucket, 'baseline');
 			assert.deepEqual(parseTweaks(`${TW},bogus,${TW},tw-1,tw-111111111111`), [TW, 'tw-111111111111']);
+		});
+
+		it('gives a server-rendered layout the tweak stylesheets, valid ids only', () => {
+			assert.deepEqual(tweakStylesheets(`${TW},bogus,"><script>`), [{ id: TW, href: `/_lab/tweaks/${TW}.css` }]);
+			assert.deepEqual(tweakStylesheets(undefined), []);
 		});
 
 		it('the beacon script adds the tweaks and sends nothing without an experiment', () => {

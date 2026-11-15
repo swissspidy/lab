@@ -46,7 +46,19 @@ With `tweaks: {}` in the config, the same proxy serves personal tweaks: link
 visitors to `/_lab/tweak/<id>` to opt in (`?off` to opt out, `?to=/path` to
 land on a page of this site), and the beacon script adds the tweak's
 stylesheet from `/_lab/tweaks/<id>.css`. A tweaked visitor is in no experiment.
-The stylesheet is added by the script, so a tweak shows after the first paint.
+A script runs after the first paint; to apply tweaks before it, render their
+links in the root layout too (the script skips links already there):
+
+```jsx
+import { cookies } from 'next/headers';
+import { COOKIE_TWEAKS, tweakStylesheets } from '@lab/next';
+// in an async RootLayout, inside <head>:
+{tweakStylesheets((await cookies()).get(COOKIE_TWEAKS)?.value).map((t) => (
+	<link key={t.id} rel="stylesheet" href={t.href} data-lab-tweak={t.id} />
+))}
+```
+
+Reading cookies makes the layout render per request.
 
 ## 2. The collector
 

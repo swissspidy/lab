@@ -184,6 +184,9 @@ describe('Next.js proxy (server mode), end to end', { timeout: 900_000 }, () => 
 		await visitor.page.waitForFunction(() => getComputedStyle(document.querySelector('h1')!).color === 'rgb(11, 61, 145)', null, { timeout: 5000 });
 		const cookies = Object.fromEntries((await visitor.context.cookies()).map((c) => [c.name, c.value]));
 		assert.equal(cookies.lab_tweaks, 'tw-00000000000a');
+		const html = await (await visitor.context.request.get(new URL('/', baseline.url).href)).text();
+		assert.match(html, /<link rel="stylesheet" href="\/_lab\/tweaks\/tw-00000000000a\.css" data-lab-tweak="tw-00000000000a"\/>/, 'the server renders the tweak in <head>, before the first paint');
+		assert.equal(await visitor.page.locator('link[data-lab-tweak]').count(), 1, 'the beacon does not add it twice');
 		assert.equal(cookies.lab_exp, '', 'a tweaked visitor is in no experiment');
 		assert.equal((await visitor.page.locator('nav[aria-label="Main"] a[href="/docs"]').count()) > 0, false, 'and is served the baseline');
 		await visitor.page.goto(new URL('/_lab/tweak/tw-00000000000a?off', baseline.url).href);

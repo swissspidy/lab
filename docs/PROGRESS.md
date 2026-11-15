@@ -53,7 +53,9 @@ host) and personal tweaks on public websites (here).
 - There is no visitor-facing form: tweaks are made with `lab tweak`, by the
   site's operator or a backend the site owns, and shared as links. A public
   form would need rate limits for the model and the verifier.
-- The stylesheet is added by the beacon script, after the first paint.
+- On Next.js, the beacon script adds the stylesheet after the first paint
+  unless the root layout renders it with `tweakStylesheets()`, as the
+  example does; the end-to-end test checks the server renders it.
 
 ## After M5: API design review (2026-11-15)
 
