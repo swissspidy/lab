@@ -89,9 +89,14 @@ export interface WebsiteHost {
  */
 export function websiteHost(config: LabConfig, files: readonly string[], pages: readonly string[]): WebsiteHost {
 	const slots: WebsiteHost['slots'] = { [SITE_SLOT]: { title: 'The whole site', page: null } };
-	for (const page of pages) {
-		const slot = pageSlot(page);
-		if (!slots[slot]) slots[slot] = { title: `The page ${page}`, page };
+	// Two pages can map to one slot (`docs.html` and `docs/index.html`, or
+	// names with no Latin letters). The first, in sorted order, keeps it; the
+	// others get `-2`, `-3`, ... on the last segment, so every page has a slot.
+	for (const page of [...pages].toSorted()) {
+		const base = pageSlot(page);
+		let slot = base;
+		for (let n = 2; slots[slot]; n++) slot = `${base}-${n}`;
+		slots[slot] = { title: `The page ${page}`, page };
 	}
 	const deny = effectiveDeny(config);
 	const scopes: WebsiteHost['scopes'] = {};

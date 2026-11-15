@@ -5,6 +5,8 @@ const ID = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
 type Raw = Record<string, unknown>;
 const isObject = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** A value for a message: strings as they are, anything else by its type, never through its own toString. */
+const show = (v: unknown): string => (typeof v === 'string' ? v : `(${v === null ? 'null' : typeof v})`);
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 
 function validTarget(t: unknown): boolean {
@@ -29,7 +31,7 @@ function stepProblem(s: unknown): string | null {
 		case 'goto':
 			return validPage(s.page) && Object.keys(s).length === 2 ? null : 'a `goto` step needs a relative `page`';
 		default:
-			return `unknown step \`${String(s.do)}\``;
+			return `unknown step \`${show(s.do)}\``;
 	}
 }
 
@@ -59,7 +61,7 @@ function assertionProblem(a: unknown): string | null {
 		case 'url':
 			return only('endsWith') && isText(a.endsWith) ? null : '`url` needs `endsWith`';
 		default:
-			return `unknown assertion \`${String(a.expect)}\``;
+			return `unknown assertion \`${show(a.expect)}\``;
 	}
 }
 
@@ -96,7 +98,7 @@ export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEve
 		error('spec-permissions', 'permissions', `\`permissions\` must list the kinds of files the change touches: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
 	} else {
 		for (const [i, scope] of raw.permissions.entries()) {
-			if (!isWebsiteScope(scope)) error('spec-permission-unknown', `permissions.${i}`, `Unknown permission \`${String(scope)}\`. Available: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
+			if (!isWebsiteScope(scope)) error('spec-permission-unknown', `permissions.${i}`, `Unknown permission \`${show(scope)}\`. Available: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
 		}
 		if (new Set(raw.permissions).size !== raw.permissions.length) error('spec-permissions', 'permissions', '`permissions` lists a scope twice.');
 	}

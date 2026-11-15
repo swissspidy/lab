@@ -75,7 +75,7 @@ describe('The website as a Graft surface', () => {
 	const host = websiteHost(config, files, ['index.html', 'docs.html', 'docs/intro.html']);
 
 	it('has a slot for the site and each page, and scopes only for files the config lets variants change', async () => {
-		assert.deepEqual(Object.keys(host.slots), ['site', 'page.index', 'page.docs', 'page.docs.intro']);
+		assert.deepEqual(Object.keys(host.slots).toSorted(), ['page.docs', 'page.docs.intro', 'page.index', 'site']);
 		// The CSS file is denied, the script and package.json are outside allow, the PNG has no scope.
 		assert.deepEqual(host.scopes, { 'markup:write': { files: 2 } });
 		const validation = await validateSurface(graftSurface(host));
@@ -95,5 +95,14 @@ describe('The website as a Graft surface', () => {
 	it('Graft rejects a permission for files the site does not let variants change', () => {
 		const codes = new GraftSpecCheck().check({ ...spec, permissions: ['markup:write', 'style:write'] }, host).map((d) => d.code);
 		assert.deepEqual(codes, ['graft-permission-unknown-scope']);
+	});
+
+	it('gives every page its own slot when two pages map to the same one', () => {
+		const clash = websiteHost(config, files, ['docs/中文.html', 'docs/指南.html', 'docs.html', 'docs/index.html']);
+		assert.deepEqual(
+			Object.entries(clash.slots).map(([slot, { page }]) => [slot, page]).toSorted(),
+			[['page.docs', 'docs.html'], ['page.docs-2', 'docs/index.html'], ['page.docs.index', 'docs/中文.html'], ['page.docs.index-2', 'docs/指南.html'], ['site', null]],
+		);
+		assert.deepEqual(new GraftSpecCheck().check({ ...spec, mount: 'page.docs.index-2' }, clash), []);
 	});
 });

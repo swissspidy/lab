@@ -6,7 +6,7 @@ import { checkPatch, hashPatch } from './patch.ts';
 import { validateSpec } from './spec.ts';
 import { StageError } from './types.ts';
 import { listSiteFiles, sitePages, websiteHost } from './website.ts';
-import type { BucketStats, Builder, CheckResult, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Proposer, RepoRef, RunningSite, Sandbox, SpecCheck, Verifier, VerifyReport } from './types.ts';
+import type { BucketStats, Builder, CheckResult, Diagnostic, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Proposer, RepoRef, RunningSite, Sandbox, SpecCheck, Verifier, VerifyReport } from './types.ts';
 
 export interface IterationDeps {
 	config: LabConfig;
@@ -122,8 +122,15 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 			return result(spec.id, 'aborted', `The baseline does not build: ${failure.message}`);
 		}
 		if (deps.specCheck) {
-			const host = websiteHost(config, listSiteFiles(site.dir, config), sitePages(config, baselineSite.root));
-			const problems = deps.specCheck.check(spec, host).filter((d) => d.severity === 'error');
+			let problems: Diagnostic[];
+			try {
+				const host = websiteHost(config, listSiteFiles(site.dir, config), sitePages(config, baselineSite.root));
+				problems = deps.specCheck.check(spec, host).filter((d) => d.severity === 'error');
+			} catch (error) {
+				const failure = describe(error);
+				await append({ ...base, type: 'aborted', payload: { stage: 'spec', ...failure } });
+				return result(spec.id, 'aborted', `${failure.code}: ${failure.message}`);
+			}
 			if (problems.length > 0) {
 				await append({ ...base, type: 'aborted', payload: { stage: 'spec', diagnostics: problems } });
 				return result(spec.id, 'aborted', problems.map((d) => `${d.code}: ${d.message}`).join(' '));

@@ -72,6 +72,10 @@ describe('validateSpec', () => {
 		assert.deepEqual(codes({ ...spec(), permissions: undefined }), ['spec-permissions']);
 		assert.deepEqual(codes({ ...spec(), permissions: ['markup:write', 'markup:write'] }), ['spec-permissions']);
 		assert.deepEqual(codes({ ...spec(), permissions: ['config:write'] }), ['spec-permission-unknown']);
+		// A value with a hostile toString is reported, not coerced (which would throw).
+		const hostile = { toString: null };
+		assert.deepEqual(codes({ ...spec(), permissions: [hostile] }), ['spec-permission-unknown']);
+		assert.deepEqual(codes({ ...spec(), checks: [{ criterion: 0, page: 'index.html', steps: [{ do: hostile }], expect: [{ expect: hostile }] }, spec().checks[1]] }), ['spec-check-invalid', 'spec-check-invalid']);
 	});
 
 	it('refuses an id the ledger already has', () => {

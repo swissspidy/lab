@@ -114,6 +114,23 @@ describe('runIteration', () => {
 		assert.equal((await d.ledger.history()).at(-1)!.payload.stage, 'spec');
 	});
 
+	it('records an aborted iteration when the spec check itself throws', async () => {
+		const specCheck: SpecCheck = {
+			check: () => {
+				throw new StageError('surface-broken', 'The surface could not be built.');
+			},
+		};
+		const d = deps({ specCheck });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /surface-broken/);
+		const last = (await d.ledger.history()).at(-1)!;
+		assert.equal(last.type, 'aborted');
+		assert.equal(last.payload.stage, 'spec');
+		assert.deepEqual(started, ['baseline']);
+		assert.equal(stopped, 1);
+	});
+
 	it('names static.build when the variant does not build', async () => {
 		const result = await runIteration(deps({ failStart: 'variant' }));
 		assert.equal(result.outcome, 'verify_failed');
