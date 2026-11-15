@@ -388,12 +388,14 @@ ${rows.join('\n')}
 
 ## What the loop got wrong
 
-${wrong.length ? wrong.map((w) => `- ${w}`).join('\n') : '- No wrong decision, against the true effects in this run.'}
-${stalled.length ? `- ${stalled.join(', ')} had no clear effect and still held the only experiment slot at the end of the week. It can hold it until maxDays (14 days): with one experiment at a time, a null result stalls the queue for up to two weeks.` : ''}
+${[
+	...(wrong.length ? wrong.map((w) => `- ${w}`) : ['- No wrong decision, against the true effects in this run.']),
+	...(stalled.length ? [`- ${stalled.join(', ')} had no clear effect and still held the only experiment slot at the end of the week. It holds it until both buckets reach twice the planned sample (or maxDays, 14 days), when the lab reverts it as having no effect of the planned size.`] : []),
+].join('\n')}
 
 Known limits this week did not exercise:
 
-- Daily peeking keeps about 15% of variants with no effect (M3 simulation).
+- Daily peeking keeps about 8% of variants with no effect at the default keep threshold (100 seeded simulations; \`traffic.keepProbability: 0.99\` brings it to 1%).
 - The factual-claims check is a heuristic.
 - No model proposed anything; a model's proposals are the untested part.
 `;

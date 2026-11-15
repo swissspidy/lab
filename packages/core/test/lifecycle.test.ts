@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { BetaBinomialDecider, FileLedger, StageError, approve, gitPromote, kill, measure, planShip, requiredSamples, sha256, ship, tick, validateConfig } from '../src/index.ts';
 import type { BucketStats, Deployer, LedgerEventInput, LiveDeps, TrafficEstimate } from '../src/index.ts';
 
-const config = validateConfig({
+const rawConfig = {
 	site: { repo: '.', build: 'b', outDir: 'dist' },
 	metric: { id: 'next_step_click', kind: 'conversion' },
 	guardrailMetrics: ['js_error_rate'],
@@ -15,7 +15,8 @@ const config = validateConfig({
 	deny: [],
 	budgets: { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 20 },
 	traffic: { share: 0.1, minSamplesPerBucket: 1000, maxDays: 14 },
-}).config!;
+};
+const config = validateConfig(rawConfig).config!;
 
 const PATCH = 'diff --git a/src/a.html b/src/a.html\nindex 1..2 100644\n--- a/src/a.html\n+++ b/src/a.html\n@@ -1 +1 @@\n-a\n+b\n';
 const counts = (visits: number, conversions: number) => ({ visits, conversions, jsErrors: 0, engaged: 0 });
@@ -163,11 +164,33 @@ describe('lifecycle', () => {
 		await approve(deps(), 'exp-0001', 'me');
 		await ship(deps(), 'exp-0001');
 		clock += 14 * 86_400_000;
+		// Below twice the planned sample, so only maxDays ends it.
+		stats.baseline = counts(1_500, 150);
+		stats.variant = counts(1_500, 152);
+		const result = await measure(deps());
+		assert.equal(result.outcome, 'reverted');
+		assert.match(result.reason, /Inconclusive after 14 days/);
+	});
+
+	it('reverts a change with no effect once both buckets reach twice the planned sample (futility)', async () => {
+		await verified();
+		await approve(deps(), 'exp-0001', 'me');
+		await ship(deps(), 'exp-0001');
+		clock += 3 * 86_400_000;
 		stats.baseline = counts(10_000, 1000);
 		stats.variant = counts(10_000, 1010);
 		const result = await measure(deps());
 		assert.equal(result.outcome, 'reverted');
-		assert.match(result.reason, /Inconclusive after 14 days/);
+		assert.match(result.reason, /No effect of the planned size/);
+	});
+
+	it('keeps at the configured keepProbability', async () => {
+		const strict = validateConfig({ ...rawConfig, traffic: { ...rawConfig.traffic, keepProbability: 0.999 } }).config!;
+		// Past the planned sample (1000), short of twice it.
+		const stats5 = { experiment: 'exp-0001', baseline: counts(1_500, 150), variant: counts(1_500, 185), latest: null, guardrails: {}, days: 3 };
+		const spec5 = { expectedEffect: 'next_step_click up' } as never;
+		assert.equal(new BetaBinomialDecider(config).decide(stats5, spec5).action, 'keep', 'P ≈ 0.98 keeps at 0.95');
+		assert.equal(new BetaBinomialDecider(strict).decide(stats5, spec5).action, 'continue', 'and does not at 0.999');
 	});
 
 	it('kills first, then records, even with a broken ledger', async () => {

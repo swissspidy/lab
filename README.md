@@ -124,11 +124,18 @@ experiment. Until then an `auto` site waits for approval like a gated one.
 
 Beta-Binomial posteriors on each bucket's conversion rate:
 
-- keep when P(variant beats baseline) ≥ 0.95, both buckets reached the
-  sample size planned at ship time, and no guardrail degraded;
+- keep when P(variant beats baseline) ≥ `traffic.keepProbability` (0.95 by
+  default), both buckets reached the sample size planned at ship time, and
+  no guardrail degraded;
 - revert when P ≤ 0.05 (after `minSamplesPerBucket`), when a guardrail
-  degrades, or when `maxDays` passes;
+  degrades, when both buckets reached twice the planned sample without a
+  keep (no effect of the planned size), or when `maxDays` passes;
 - otherwise keep running.
+
+In 100 seeded simulations at the defaults, a change with no effect is kept
+8 times and holds the slot for 10 days on average; a true +20% change is
+always kept, a true +10% change 90 times. With `keepProbability: 0.99`,
+false keeps drop to 1 in 100 and a +10% change is kept 71 times.
 
 Guardrails (`js_error_rate`, `bounce`) degrade when the variant is worse than
 the baseline by more than the margin in `rollback` and by enough standard
@@ -137,9 +144,12 @@ experiment. They are checked every interval, on that interval alone and on
 the totals.
 
 **Peeking.** The rule is evaluated once a day, not continuously, and the
-daily looks are not corrected for. In simulation, a variant with no true
-effect is kept about 15% of the time (3 of 20). A sequential test would fix
-this; it is a later improvement.
+daily looks are not corrected for. Keeping waits for the planned sample, and
+the futility rule ends a null at twice it, so a variant with no true effect
+is kept about 8% of the time (100 seeded simulations). Raise
+`traffic.keepProbability` for fewer false keeps at the cost of missing more
+small real effects (numbers above). A sequential test would be the next
+step.
 
 ## Verification
 

@@ -31,6 +31,7 @@ export const DEFAULTS = {
 	autonomy: 'gated' as const,
 	intervalHours: 24,
 	minDetectableEffect: 0.2,
+	keepProbability: 0.95,
 	rollback: { jsErrorMargin: 0.02, bounceMargin: 0.1, minVisits: 100 },
 };
 
@@ -74,7 +75,7 @@ export function validateConfig(raw: unknown): ConfigResult {
 		deny: 'string[]',
 		invariants: 'string',
 		budgets: { lcpMs: 'number', cls: 'number', axeViolations: 'number', bundleKbDelta: 'number' },
-		traffic: { share: 'number', minSamplesPerBucket: 'number', maxDays: 'number', intervalHours: 'number?', minDetectableEffect: 'number?' },
+		traffic: { share: 'number', minSamplesPerBucket: 'number', maxDays: 'number', intervalHours: 'number?', minDetectableEffect: 'number?', keepProbability: 'number?' },
 		rollback: { jsErrorMargin: 'number?', bounceMargin: 'number?', minVisits: 'number?' },
 		deploy: { publish: 'string', retire: 'string?', env: 'string[]?' },
 		tweaks: { maxBytes: 'number?' },
@@ -161,7 +162,13 @@ export function validateConfig(raw: unknown): ConfigResult {
 		viewports: DEFAULTS.viewports,
 		autonomy: DEFAULTS.autonomy,
 		...raw,
-		traffic: { intervalHours: DEFAULTS.intervalHours, minDetectableEffect: DEFAULTS.minDetectableEffect, ...rawTraffic },
+		traffic: {
+			...rawTraffic,
+			// An optional key set to undefined takes the default, as if it were left out.
+			intervalHours: rawTraffic.intervalHours ?? DEFAULTS.intervalHours,
+			minDetectableEffect: rawTraffic.minDetectableEffect ?? DEFAULTS.minDetectableEffect,
+			keepProbability: rawTraffic.keepProbability ?? DEFAULTS.keepProbability,
+		},
 		rollback: { ...DEFAULTS.rollback, ...(isObject(raw.rollback) ? raw.rollback : {}) },
 	} as LabConfig;
 
@@ -203,6 +210,10 @@ export function validateConfig(raw: unknown): ConfigResult {
 	}
 	if (!(minDetectableEffect > 0 && minDetectableEffect <= 1)) {
 		error('config-traffic-mde', 'traffic.minDetectableEffect', '`traffic.minDetectableEffect` must be a relative lift above 0 and at most 1.');
+	}
+	const { keepProbability } = config.traffic;
+	if (!(keepProbability >= 0.9 && keepProbability < 1)) {
+		error('config-traffic-keep', 'traffic.keepProbability', '`traffic.keepProbability` must be at least 0.9 and below 1. 0.95 keeps about 8% of changes that do nothing; 0.99 about 1%, at the cost of missing more small real effects.');
 	}
 	for (const [key, value] of Object.entries(config.rollback)) {
 		if (!(value >= 0) || (key !== 'minVisits' && value > 1) || (key === 'minVisits' && !Number.isInteger(value))) {

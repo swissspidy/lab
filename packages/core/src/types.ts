@@ -213,6 +213,8 @@ export interface LabConfig {
 		intervalHours: number;
 		/** The relative lift the sample size is planned for: 0.2 means 10% to 12%. */
 		minDetectableEffect: number;
+		/** P(expected effect) needed to keep a change, at the planned sample. Default 0.95. */
+		keepProbability: number;
 	};
 	/** When a guardrail counts as degraded, in absolute rate differences. */
 	rollback: { jsErrorMargin: number; bounceMargin: number; minVisits: number };

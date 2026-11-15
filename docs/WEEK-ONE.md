@@ -29,15 +29,14 @@ Approvals by anyone but the lab: 0.
 | --- | --- | --- | --- | --- | --- |
 | exp-0006 | Put Get started above the install command. | +20% | kept | 0.3 | 1.000 |
 | exp-0007 | Hide the search button. | breaks search: must be rejected | rejected by Verify (invariants.search-returns-results) | 2.8 | – |
-| exp-0008 | List review links first among the features. | none | still live at the end of the week | 3.0 | 0.058 |
+| exp-0008 | List review links first among the features. | none | reverted | 3.0 | 0.058 |
 
 ## What the loop got wrong
 
 - No wrong decision, against the true effects in this run.
-- exp-0008 had no clear effect and still held the only experiment slot at the end of the week. It can hold it until maxDays (14 days): with one experiment at a time, a null result stalls the queue for up to two weeks.
 
 Known limits this week did not exercise:
 
-- Daily peeking keeps about 15% of variants with no effect (M3 simulation).
+- Daily peeking keeps about 8% of variants with no effect at the default keep threshold (100 seeded simulations; `traffic.keepProbability: 0.99` brings it to 1%).
 - The factual-claims check is a heuristic.
 - No model proposed anything; a model's proposals are the untested part.

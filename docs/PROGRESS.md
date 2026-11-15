@@ -1,5 +1,45 @@
 # Progress
 
+## After M5: the open questions, decided (2026-11-15)
+
+Pascal asked me to settle the open questions in `docs/QUESTIONS.md` myself.
+Each now says what was decided and why. Two changed code; the rest keep
+what the lab already does.
+
+**Built**
+
+- Futility (question 15): a change not kept once both buckets reach twice
+  the planned sample is reverted as having no effect of the planned size.
+  A null no longer holds the only experiment slot until `maxDays`.
+- `traffic.keepProbability` (question 8): the keep threshold, 0.95 by
+  default as the brief says, from 0.9 to below 1
+  (`config-traffic-keep`).
+- The README, the report's explanation and the week write-up describe the
+  new rule and its measured rates.
+
+**Verified**
+
+- 100 seeded simulations per setting (baseline 10%):
+
+  | Keep at | Futility | Null kept | Null days | +20% kept | +10% kept |
+  | --- | --- | --- | --- | --- | --- |
+  | 0.95 | none (before) | 9 | 12.1 | 100 | 95 |
+  | 0.95 | 2× plan (now) | 8 | 9.7 | 100 | 90 |
+  | 0.975 | 2× plan | 6 | 9.7 | 100 | 81 |
+  | 0.99 | 2× plan | 1 | 9.9 | 100 | 71 |
+
+- `npm run check`: 243 tests, including futility, the configured keep
+  threshold and its validation. The M3 acceptance test (18 of 20 true +20%
+  kept, no −20% kept, nulls rare) still passes.
+- `npm run test:nextjs`. The regenerated week now reverts exp-0008, the
+  change with no effect, inside the week instead of leaving it live.
+
+**Not changed**
+
+- Sandburg, Lighthouse, a key-value collector and pull requests from CI:
+  each is decided against for now, with the condition that would change it
+  written in `docs/QUESTIONS.md`.
+
 ## After M5: a reproducible example run (2026-11-15)
 
 `npm run example:nextjs` regenerates `docs/WEEK-ONE.md`, the report and the
