@@ -4,6 +4,7 @@
 //   <root>/state.json      which experiment is live and its share
 // Rolling back or killing rewrites state.json only: no build, no deploy.
 import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { StageError, buildInScratch } from '@lab/core';
 import type { Deployer, LabConfig, RepoRef, Variant } from '@lab/core';
@@ -31,6 +32,37 @@ export function writeState(root: string, state: DeployState): void {
 }
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]{1,62}$/;
+
+/**
+ * Validates deploy state from outside (a request body, a collector response).
+ * Returns null for anything malformed: callers must refuse it, never treat it
+ * as "nothing is live".
+ */
+export function parseDeployState(value: unknown): DeployState | null {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+	const { live, killedAt } = value as { live?: unknown; killedAt?: unknown };
+	if (!('live' in value)) return null;
+	if (killedAt !== undefined && typeof killedAt !== 'string') return null;
+	const kill = typeof killedAt === 'string' ? { killedAt } : {};
+	if (live === null) return { live: null, ...kill };
+	if (typeof live !== 'object' || Array.isArray(live)) return null;
+	const l = live as Record<string, unknown>;
+	if (typeof l.experiment !== 'string' || !SAFE_ID.test(l.experiment)) return null;
+	if (typeof l.share !== 'number' || !(l.share > 0 && l.share <= 0.5)) return null;
+	if (l.origin !== undefined) {
+		try {
+			if (!['http:', 'https:'].includes(new URL(String(l.origin)).protocol)) return null;
+		} catch {
+			return null;
+		}
+	}
+	return { live: { experiment: l.experiment, share: l.share, ...(typeof l.origin === 'string' ? { origin: l.origin } : {}) }, ...kill };
+}
+
+/** A version of the state, for conditional writes: any change, a kill included, changes it. */
+export function stateVersion(state: DeployState): string {
+	return createHash('sha256').update(JSON.stringify({ live: state.live ?? null, killedAt: state.killedAt ?? null })).digest('hex');
+}
 
 export class ReferenceDeployer implements Deployer {
 	readonly root: string;

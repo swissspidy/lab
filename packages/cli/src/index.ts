@@ -67,7 +67,8 @@ With LAB_URL and LAB_TOKEN set, run, status and kill use that collector for
 the deploy state and the metrics, so the loop can run anywhere (a scheduled
 CI job). Server apps ship variants with \`deploy.publish\` from the config.
 
-Exit codes: 0 ok, 1 invalid or rejected, 2 aborted, 64 usage.`;
+Exit codes: 0 ok, 1 rejected by Verify (doctor: invalid), 2 aborted, 3 error
+(invalid config, unreachable collector, anything unexpected), 64 usage.`;
 
 function format(d: Diagnostic): string {
 	return `${d.severity === 'error' ? 'error' : 'warning'} ${d.code}${d.path ? ` (${d.path})` : ''}: ${d.message}`;
@@ -139,6 +140,11 @@ async function main(argv: string[]): Promise<number> {
 	const ledger = new FileLedger(resolve(values.ledger ?? resolve(siteDir, LEDGER_FILE)));
 	const site = { dir: siteDir, commit: siteCommit(siteDir) };
 
+	if (process.env.LAB_URL && !process.env.LAB_TOKEN && ['run', 'status', 'kill'].includes(command)) {
+		// Never fall back to local state when a collector is configured: a local kill would not stop it.
+		process.stderr.write('LAB_URL is set but LAB_TOKEN is not. Set both to use the collector, or unset LAB_URL.\n');
+		return 3;
+	}
 	const remote = process.env.LAB_URL && process.env.LAB_TOKEN ? { url: process.env.LAB_URL, token: process.env.LAB_TOKEN } : null;
 	const stateStore: StateStore = remote ? new RemoteState(remote) : new FileState(hostDir);
 	const noPublisher = { publish: async () => Promise.reject(new Error('This site is a server app: set `deploy.publish` in lab.config.ts to publish variants.')), retire: async () => {} };
@@ -156,7 +162,7 @@ async function main(argv: string[]): Promise<number> {
 
 	if (!report.ok || !report.config) {
 		for (const d of report.diagnostics) process.stdout.write(`${format(d)}\n`);
-		return 1;
+		return 3;
 	}
 	const config = report.config;
 	const store = () => new MetricStore({ intervalHours: config.traffic.intervalHours, file: resolve(hostDir, 'metrics.json') });
@@ -224,7 +230,7 @@ async function main(argv: string[]): Promise<number> {
 		case 'status': {
 			const events = await ledger.history();
 			const live = liveExperiment(events);
-			const state = await stateStore.read();
+			const { state } = await stateStore.read();
 			const out: Record<string, unknown> = { host: hostDir, serving: state.live ?? 'baseline only', killedAt: state.killedAt ?? null, live };
 			const lines = [`Host: ${hostDir}`, `Serving: ${state.live ? `${state.live.experiment} to ${state.live.share * 100}%` : 'the baseline only'}${state.killedAt ? ` (kill switch used ${state.killedAt})` : ''}`];
 			if (live) {
@@ -280,5 +286,5 @@ try {
 } catch (error) {
 	const code = (error as { code?: unknown }).code;
 	process.stderr.write(`${typeof code === 'string' ? `${code}: ` : ''}${error instanceof Error ? error.message : String(error)}\n`);
-	process.exitCode = 1;
+	process.exitCode = 3;
 }

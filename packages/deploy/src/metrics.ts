@@ -27,6 +27,12 @@ export const emptyCounts = (): BucketCounts => ({ visits: 0, conversions: 0, jsE
 function validData(value: unknown): Data {
 	const d = value as Partial<Data> | null;
 	if (!d || typeof d !== 'object' || typeof d.intervalMs !== 'number' || typeof d.series !== 'object' || d.series === null) throw new Error('Metrics data is malformed.');
+	for (const intervals of Object.values(d.series)) {
+		if (typeof intervals !== 'object' || intervals === null) throw new Error('Metrics data is malformed.');
+		for (const row of Object.values(intervals)) {
+			for (const b of BUCKETS) for (const e of EVENTS) if (typeof (row as Row | undefined)?.[b]?.[e] !== 'number') throw new Error('Metrics data is malformed.');
+		}
+	}
 	return d as Data;
 }
 
@@ -40,7 +46,7 @@ export class MetricStore {
 	constructor(options: { intervalHours: number; file?: string; data?: unknown }) {
 		this.file = options.file ?? null;
 		const intervalMs = options.intervalHours * 3_600_000;
-		this.data = options.data
+		this.data = 'data' in options
 			? validData(options.data)
 			: this.file && existsSync(this.file)
 				? validData(JSON.parse(readFileSync(this.file, 'utf8')))

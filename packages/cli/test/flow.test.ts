@@ -17,7 +17,8 @@ async function lab(...args: string[]): Promise<{ code: number; stdout: string; s
 
 async function labWith(env: Record<string, string>, ...args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
 	try {
-		const { stdout, stderr } = await promisify(execFile)(process.execPath, [cli, ...args], { env: { ...process.env, ...env } });
+		// Never inherit a real collector from the environment running the tests.
+		const { stdout, stderr } = await promisify(execFile)(process.execPath, [cli, ...args], { env: { ...process.env, LAB_URL: '', LAB_TOKEN: '', ...env } });
 		return { code: 0, stdout, stderr };
 	} catch (error) {
 		const e = error as { code: number; stdout: string; stderr: string };
@@ -44,7 +45,7 @@ describe('lab run, approve, status, kill', () => {
 			r = await lab('approve', 'good-nav-docs', dir, '--by', 'tester');
 			assert.equal(r.code, 0, r.stderr);
 			r = await lab('approve', 'good-nav-docs', dir);
-			assert.equal(r.code, 1);
+			assert.equal(r.code, 3);
 			assert.match(r.stderr, /approve-invalid-state/);
 
 			r = await lab('publish', dir);
@@ -73,6 +74,10 @@ describe('lab run, approve, status, kill', () => {
 			assert.equal(r.code, 0, r.stderr);
 			assert.equal(readState(host).live, null);
 			assert.ok(readState(host).killedAt);
+			// LAB_URL without LAB_TOKEN is refused, never a silent local kill.
+			r = await labWith({ LAB_URL: collector.url }, 'kill', dir);
+			assert.equal(r.code, 3);
+			assert.match(r.stderr, /LAB_TOKEN is not/);
 			// A wrong token cannot change the state.
 			writeState(host, { live: { experiment: 'exp-0009', share: 0.1, origin: 'https://v.example' } });
 			r = await labWith({ LAB_URL: collector.url, LAB_TOKEN: 'wrong' }, 'kill', dir);

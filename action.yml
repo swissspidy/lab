@@ -45,6 +45,8 @@ runs:
       run: npm ci --no-audit --no-fund
 
     - name: Install the site's dependencies
+      # Not for kill: stopping traffic must not depend on the site installing cleanly.
+      if: inputs.command != 'kill'
       shell: bash
       env:
         SITE: ${{ inputs.site }}
@@ -85,9 +87,10 @@ runs:
         code=${PIPESTATUS[0]}
         set -e
         echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        # Rejected (1) and aborted (2) are normal outcomes of an iteration, not failures of the job.
-        if [ "$code" -ne 0 ] && [ "$code" -ne 1 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
-        if [ "$COMMAND" != run ] && [ "$code" -ne 0 ]; then exit "$code"; fi
+        # For run, rejected (1) and aborted (2) are normal outcomes of an iteration.
+        # 3 is an error (invalid config, unreachable collector) and fails the job.
+        if [ "$COMMAND" = run ] && { [ "$code" -eq 1 ] || [ "$code" -eq 2 ]; }; then exit 0; fi
+        exit "$code"
 
     - name: Commit the ledger and kept changes
       if: inputs.commit == 'true' && (inputs.command == 'run' || inputs.command == 'approve' || inputs.command == 'kill')
@@ -99,4 +102,15 @@ runs:
         git add -f -- "$SITE/lab/ledger.jsonl" 2>/dev/null || true
         [ -d "$SITE/lab/specs" ] && git add -f -- "$SITE/lab/specs"
         if ! git diff --cached --quiet; then git commit -q -m "lab: $COMMAND"; fi
-        if [ -n "$(git log --branches --not --remotes --oneline)" ]; then git push; fi
+        # Someone may have pushed since checkout: rebase onto it and retry. If that
+        # keeps failing, fail the job loudly; the commits stay in the job log.
+        if [ -n "$(git log --branches --not --remotes --oneline)" ]; then
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            git pull --rebase --no-edit || { git rebase --abort; break; }
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not push the ledger. The deploy state may be ahead of the committed ledger; run the workflow again or push lab/ledger.jsonl by hand." >&2
+          git log --branches --not --remotes --stat >&2
+          exit 1
+        fi

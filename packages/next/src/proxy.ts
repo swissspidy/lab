@@ -47,19 +47,32 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 	const doFetch = options.fetch ?? fetch;
 	const base = options.lab ? options.lab.replace(/\/+$/, '') : null;
 	let cached: { state: LabState; at: number } | null = null;
+	// Each fetch is numbered; a response older than one already applied is
+	// dropped, so a slow "live" answer can never undo a newer kill. Cache age
+	// counts from when the request started, not when it finished.
+	let issued = 0;
+	let applied = 0;
 
 	async function state(): Promise<LabState> {
 		if (!base) return { live: null };
 		if (cached && Date.now() - cached.at < cacheMs) return cached.state;
+		const mine = ++issued;
+		const startedAt = Date.now();
+		let value: LabState;
+		let at = startedAt;
 		try {
 			const res = await doFetch(`${base}/state`, { cache: 'no-store', signal: AbortSignal.timeout(1500) });
-			const value = res.ok ? parseState(await res.json()) : { live: null };
-			cached = { state: value, at: Date.now() };
+			value = res.ok ? parseState(await res.json()) : { live: null };
 		} catch {
 			// The lab is unreachable: serve the baseline, and try again soon.
-			cached = { state: { live: null }, at: Date.now() - cacheMs + 1000 };
+			value = { live: null };
+			at = startedAt - cacheMs + Math.min(cacheMs, 1000);
 		}
-		return cached.state;
+		if (mine > applied) {
+			applied = mine;
+			cached = { state: value, at };
+		}
+		return cached?.state ?? value;
 	}
 
 	return async (request) => {

@@ -83,7 +83,10 @@ reachable by the proxy: turn off Deployment Protection for previews, or use a
 protection bypass.
 
 When a variant is kept, the lab commits its patch to the site's repository;
-the site's own deployment then ships it to everyone.
+the site's own deployment then ships it to everyone. If that deployment is a
+GitHub workflow triggered by `push`, give the lab workflow a token that starts
+workflows (`LAB_PUSH_TOKEN` in the example): pushes made with the default
+`GITHUB_TOKEN` do not.
 
 ## 4. The workflow
 

@@ -90,6 +90,29 @@ describe('@lab/next', () => {
 		assert.deepEqual(calls.map((c) => c.kind), ['rewrite', 'next']);
 	});
 
+	it('never lets an older, slower state response undo a newer kill', async () => {
+		const { calls, NextResponse } = fakeNext();
+		let n = 0;
+		const fetchImpl = (async () => {
+			n++;
+			if (n === 1) {
+				// The first request is slow and answers "live".
+				await new Promise((r) => setTimeout(r, 120));
+				return Response.json(live());
+			}
+			return Response.json({ live: null });
+		}) as typeof fetch;
+		const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', cacheMs: 0, fetch: fetchImpl });
+		const vid = visitorIn('variant');
+		const slow = proxy(request('http://site.test/a', { lab_vid: vid }));
+		await new Promise((r) => setTimeout(r, 20));
+		await proxy(request('http://site.test/b', { lab_vid: vid }));
+		await slow;
+		// The kill arrived second but was observed by the newer request; the stale answer is dropped.
+		const proxy2Calls = calls.map((c) => c.kind);
+		assert.deepEqual(proxy2Calls, ['next', 'next']);
+	});
+
 	it('never rewrites to its own host', async () => {
 		const { calls, NextResponse } = fakeNext();
 		const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: (async () => Response.json(live('http://site.test'))) as typeof fetch });

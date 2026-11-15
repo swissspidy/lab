@@ -1,4 +1,4 @@
-export { ReferenceDeployer, readState, writeState } from './deployer.ts';
+export { ReferenceDeployer, parseDeployState, readState, stateVersion, writeState } from './deployer.ts';
 export type { DeployState } from './deployer.ts';
 export { BEACON_PATH, BEACON_SCRIPT, COOKIE, assignBucket, beaconScript, createEdgeHandler, recordBeacon, startEdgeServer } from './edge.ts';
 export { startCollector } from './collector.ts';

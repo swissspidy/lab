@@ -36,6 +36,13 @@ jobs:
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Pushes made with the default GITHUB_TOKEN do not start other
+          # workflows. If production deploys from an `on: push` workflow, use a
+          # token that does (a GitHub App token or a fine-grained PAT with
+          # contents: write), so kept changes reach production. Hosts with a
+          # git integration (Vercel, Netlify) deploy on any push.
+          token: ${{ secrets.LAB_PUSH_TOKEN || github.token }}
       - uses: swissspidy/lab@main
         with:
           command: ${{ inputs.command || 'run' }}

@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
-import { readState, writeState } from './deployer.ts';
+import { parseDeployState, readState, stateVersion, writeState } from './deployer.ts';
 import type { DeployState } from './deployer.ts';
 import { recordBeacon } from './edge.ts';
 import type { MetricStore } from './metrics.ts';
@@ -25,26 +25,6 @@ export interface CollectorOptions {
 	 * the state can then only change on this machine (`lab kill`, the deployer).
 	 */
 	token?: string;
-}
-
-const EXPERIMENT = /^[a-z0-9][a-z0-9-]{1,62}$/;
-
-function validState(value: unknown): DeployState | null {
-	if (typeof value !== 'object' || value === null) return null;
-	const { live, killedAt } = value as { live?: unknown; killedAt?: unknown };
-	if (killedAt !== undefined && typeof killedAt !== 'string') return null;
-	if (live === null || live === undefined) return { live: null, ...(typeof killedAt === 'string' ? { killedAt } : {}) };
-	const l = live as Record<string, unknown>;
-	if (typeof l.experiment !== 'string' || !EXPERIMENT.test(l.experiment)) return null;
-	if (typeof l.share !== 'number' || !(l.share > 0 && l.share <= 0.5)) return null;
-	if (l.origin !== undefined) {
-		try {
-			if (!['http:', 'https:'].includes(new URL(String(l.origin)).protocol)) return null;
-		} catch {
-			return null;
-		}
-	}
-	return { live: { experiment: l.experiment, share: l.share, ...(typeof l.origin === 'string' ? { origin: l.origin } : {}) }, ...(typeof killedAt === 'string' ? { killedAt } : {}) };
 }
 
 export async function startCollector(options: CollectorOptions): Promise<{ url: string; server: Server; close(): Promise<void> }> {
@@ -67,11 +47,14 @@ export async function startCollector(options: CollectorOptions): Promise<{ url: 
 			req.on('end', () => {
 				let state: DeployState | null = null;
 				try {
-					state = validState(JSON.parse(body));
+					state = parseDeployState(JSON.parse(body));
 				} catch {}
 				if (!state) return void res.writeHead(400).end();
+				// A conditional write fails if the state changed since the writer read it (a kill, say).
+				const expected = req.headers['if-match'];
+				if (expected && expected.replaceAll('"', '') !== stateVersion(readState(options.root))) return void res.writeHead(412).end();
 				writeState(options.root, state);
-				res.writeHead(204).end();
+				res.writeHead(204, { etag: `"${stateVersion(state)}"` }).end();
 			});
 			return;
 		}
@@ -81,8 +64,10 @@ export async function startCollector(options: CollectorOptions): Promise<{ url: 
 			return;
 		}
 		if (path === '/state' && req.method === 'GET') {
-			const { live } = readState(options.root);
-			res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ live }));
+			const state = readState(options.root);
+			res
+				.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', etag: `"${stateVersion(state)}"` })
+				.end(JSON.stringify({ live: state.live, ...(state.killedAt ? { killedAt: state.killedAt } : {}) }));
 			return;
 		}
 		if (path === '/beacon' && req.method === 'POST') {

@@ -41,6 +41,12 @@ describe('remote collector', () => {
 		assert.equal((await put({ live: { experiment: 'exp-0001', share: 0.1, origin: 'file:///etc' } }, 'secret-token')).status, 400);
 		assert.equal((await put({ live: { experiment: 'exp-0001', share: 0.1, origin: 'https://v.example' } }, 'secret-token')).status, 204);
 		assert.deepEqual(await (await fetch(`${collector.url}/state`)).json(), { live: { experiment: 'exp-0001', share: 0.1, origin: 'https://v.example' } });
+		// A conditional write against a stale version is refused.
+		const stale = await fetch(`${collector.url}/state`, { method: 'PUT', body: JSON.stringify({ live: null }), headers: { authorization: 'Bearer secret-token', 'if-match': '"0000"' } });
+		assert.equal(stale.status, 412);
+		const etag = (await fetch(`${collector.url}/state`)).headers.get('etag')!;
+		const fresh = await fetch(`${collector.url}/state`, { method: 'PUT', body: JSON.stringify({ live: { experiment: 'exp-0001', share: 0.1, origin: 'https://v.example' } }), headers: { authorization: 'Bearer secret-token', 'if-match': etag } });
+		assert.equal(fresh.status, 204);
 	});
 
 	it('keeps metrics behind the token, and a remote meter reads them', async () => {
@@ -72,6 +78,60 @@ describe('remote collector', () => {
 const NEW_FILE = 'diff --git a/src/a.txt b/src/a.txt\nnew file mode 100644\nindex 0000000..1111111\n--- /dev/null\n+++ b/src/a.txt\n@@ -0,0 +1 @@\n+variant\n';
 const variant = (experiment: string, dir: string) => ({ experiment, base: { dir, commit: 'c' }, patch: NEW_FILE, patchHash: hashPatch(NEW_FILE) });
 
+describe('OriginDeployer races and failures', () => {
+	it('a kill while a variant is publishing wins, and the variant is taken down', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-race-'));
+		try {
+			const retired: string[] = [];
+			let release!: () => void;
+			const gate = new Promise<void>((r) => (release = r));
+			const deployer = new OriginDeployer({
+				root: dir,
+				publisher: {
+					publish: async () => {
+						await gate;
+						return 'https://exp-0005.preview.example';
+					},
+					retire: async (id) => void retired.push(id),
+				},
+			});
+			const shipping = deployer.ship({ experiment: 'exp-0005', base: { dir, commit: 'c' }, patch: '', patchHash: hashPatch('') }, 0.1);
+			await new Promise((r) => setTimeout(r, 10));
+			await deployer.kill();
+			release();
+			await assert.rejects(shipping, (e: unknown) => e instanceof StageError && e.code === 'deploy-state-changed');
+			assert.equal(readState(dir).live, null);
+			assert.ok(readState(dir).killedAt, 'the kill is not erased');
+			assert.deepEqual(retired, ['exp-0005']);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('takes the variant down when the state cannot be written', async () => {
+		const retired: string[] = [];
+		const deployer = new OriginDeployer({
+			state: { read: async () => ({ state: { live: null }, version: 'v1' }), write: async () => Promise.reject(new StageError('remote-state-unwritable', 'no')) },
+			publisher: { publish: async () => 'https://v.example', retire: async (id) => void retired.push(id) },
+		});
+		await assert.rejects(deployer.ship({ experiment: 'exp-0006', base: { dir: '.', commit: 'c' }, patch: '', patchHash: hashPatch('') }, 0.1), (e: unknown) => e instanceof StageError && e.code === 'remote-state-unwritable');
+		assert.deepEqual(retired, ['exp-0006']);
+	});
+
+	it('refuses malformed state from the collector instead of treating it as idle', async () => {
+		for (const body of ['[]', '{}', '{"live":{"experiment":"exp-0001","share":0.9}}', 'not json']) {
+			const state = new RemoteState({ url: 'http://lab.test', token: 't', fetch: (async () => new Response(body)) as typeof fetch });
+			await assert.rejects(state.read(), (e: unknown) => e instanceof StageError && e.code === 'remote-state-malformed', body);
+		}
+	});
+
+	it('refuses malformed metrics, including empty or falsy data', () => {
+		for (const data of [null, 0, '', false, { intervalMs: 3_600_000, series: { 'exp-0001': { '1': {} } } }]) {
+			assert.throws(() => new MetricStore({ intervalHours: 1, data }), /malformed/, JSON.stringify(data));
+		}
+	});
+});
+
 describe('CommandPublisher', () => {
 	it('publishes from a built copy, passes only the allowed variables, and reads the URL from the last line', async () => {
 		const site = mkdtempSync(join(tmpdir(), 'lab-cmd-site-'));
@@ -95,6 +155,11 @@ describe('CommandPublisher', () => {
 			rmSync(site, { recursive: true, force: true });
 			rmSync(log, { force: true });
 		}
+	});
+
+	it('reports a failing retire command', async () => {
+		const publisher = new CommandPublisher({ config: configWith({ publish: 'echo https://x.example', retire: 'echo gone wrong >&2; exit 4' }) });
+		await assert.rejects(publisher.retire('exp-0007'), (e: unknown) => e instanceof StageError && e.code === 'deploy-retire-failed' && (e.detail ?? '').includes('gone wrong'));
 	});
 
 	it('is refused without deploy.publish', () => {

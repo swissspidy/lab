@@ -5,8 +5,9 @@
 import { mkdirSync } from 'node:fs';
 import { StageError, buildInScratch, runFile, startService } from '@lab/core';
 import type { Deployer, LabConfig, ScratchBuild, Service, Variant } from '@lab/core';
-import { readState, writeState } from './deployer.ts';
+import { readState, stateVersion, writeState } from './deployer.ts';
 import type { DeployState } from './deployer.ts';
+import { stateChanged } from './remote.ts';
 import type { StateStore } from './remote.ts';
 
 /** Puts a variant somewhere a proxy can reach it, and takes it down again. */
@@ -23,10 +24,12 @@ export class FileState implements StateStore {
 		this.root = root;
 		mkdirSync(root, { recursive: true });
 	}
-	async read(): Promise<DeployState> {
-		return readState(this.root);
+	async read(): Promise<{ state: DeployState; version: string }> {
+		const state = readState(this.root);
+		return { state, version: stateVersion(state) };
 	}
-	async write(state: DeployState): Promise<void> {
+	async write(state: DeployState, expected?: string): Promise<void> {
+		if (expected && stateVersion(readState(this.root)) !== expected) throw stateChanged();
 		writeState(this.root, state);
 	}
 }
@@ -46,15 +49,21 @@ export class OriginDeployer implements Deployer {
 	}
 
 	async ship(variant: Variant, share: number): Promise<void> {
-		const state = await this.state.read();
+		const { state, version } = await this.state.read();
 		if (state.live) throw new StageError('deploy-busy', `${state.live.experiment} is live.`);
 		const origin = await this.publisher.publish(variant);
-		await this.state.write({ ...state, live: { experiment: variant.experiment, share, origin } });
+		try {
+			// Conditional: a kill while the variant was publishing wins, and the variant is taken down.
+			await this.state.write({ live: { experiment: variant.experiment, share, origin } }, version);
+		} catch (error) {
+			await this.publisher.retire(variant.experiment).catch(() => undefined);
+			throw error;
+		}
 	}
 
 	async rollback(experiment: string): Promise<void> {
-		const state = await this.state.read();
-		if (state.live?.experiment === experiment) await this.state.write({ ...state, live: null });
+		const { state, version } = await this.state.read();
+		if (state.live?.experiment === experiment) await this.state.write({ ...state, live: null }, version);
 		await this.publisher.retire(experiment);
 	}
 
@@ -68,7 +77,7 @@ export class OriginDeployer implements Deployer {
 	}
 
 	async kill(): Promise<void> {
-		const live = (await this.state.read().catch(() => ({ live: null }))).live;
+		const live = (await this.state.read().catch(() => ({ state: { live: null } }))).state.live;
 		await this.state.write({ live: null, killedAt: this.now().toISOString() });
 		if (live) await this.publisher.retire(live.experiment).catch(() => undefined);
 	}
@@ -152,6 +161,9 @@ export class CommandPublisher implements VariantPublisher {
 
 	async retire(experiment: string): Promise<void> {
 		if (!this.config.deploy?.retire) return;
-		await runFile('sh', ['-c', this.config.deploy.retire], process.cwd(), 300_000, { ...this.env, LAB_EXPERIMENT: experiment });
+		const result = await runFile('sh', ['-c', this.config.deploy.retire], process.cwd(), 300_000, { ...this.env, LAB_EXPERIMENT: experiment });
+		if (result.code !== 0) {
+			throw new StageError('deploy-retire-failed', result.timedOut ? 'The retire command timed out.' : `The retire command failed with exit code ${result.code}.`, result.output);
+		}
 	}
 }

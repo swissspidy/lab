@@ -5,15 +5,24 @@
 //   GET  /metrics  needs the token; the meter reads it
 import type { BucketStats, LabConfig, Meter, TrafficEstimate } from '@lab/core';
 import { StageError } from '@lab/core';
+import { parseDeployState, stateVersion } from './deployer.ts';
 import type { DeployState } from './deployer.ts';
 import { MetricStore } from './metrics.ts';
 import { StoreMeter } from './meter.ts';
 
 /** Where a deployer keeps the state: a local directory, or a remote collector. */
 export interface StateStore {
-	read(): Promise<DeployState>;
-	write(state: DeployState): Promise<void>;
+	read(): Promise<{ state: DeployState; version: string }>;
+	/**
+	 * With `expected`, writes only if the state is still at that version, and
+	 * throws `deploy-state-changed` otherwise: a kill between a read and a
+	 * write must win.
+	 */
+	write(state: DeployState, expected?: string): Promise<void>;
 }
+
+export const stateChanged = () =>
+	new StageError('deploy-state-changed', 'The deploy state changed since it was read (a kill switch, or another run). Nothing was overwritten.');
 
 export interface RemoteOptions {
 	/** The collector's base URL. */
@@ -31,18 +40,21 @@ export class RemoteState implements StateStore {
 		this.options = options;
 	}
 
-	async read(): Promise<DeployState> {
+	async read(): Promise<{ state: DeployState; version: string }> {
 		const res = await (this.options.fetch ?? fetch)(`${base(this.options.url)}/state`, { cache: 'no-store' });
 		if (!res.ok) throw new StageError('remote-state-unreadable', `The collector answered ${res.status} for /state.`);
-		return (await res.json()) as DeployState;
+		const state = parseDeployState(await res.json().catch(() => null));
+		if (!state) throw new StageError('remote-state-malformed', 'The collector returned malformed state. Refusing to treat it as idle.');
+		return { state, version: stateVersion(state) };
 	}
 
-	async write(state: DeployState): Promise<void> {
+	async write(state: DeployState, expected?: string): Promise<void> {
 		const res = await (this.options.fetch ?? fetch)(`${base(this.options.url)}/state`, {
 			method: 'PUT',
-			headers: { authorization: `Bearer ${this.options.token}`, 'content-type': 'application/json' },
+			headers: { authorization: `Bearer ${this.options.token}`, 'content-type': 'application/json', ...(expected ? { 'if-match': `"${expected}"` } : {}) },
 			body: JSON.stringify(state),
 		});
+		if (res.status === 412) throw stateChanged();
 		if (!res.ok) throw new StageError('remote-state-unwritable', `The collector refused the state (${res.status}). Check LAB_TOKEN.`);
 	}
 }
