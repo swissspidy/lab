@@ -3,6 +3,7 @@
 // (kinds of files it may change). The slots and scopes come from the site
 // itself: its pages and its allowed files. This module knows nothing of
 // Graft; the Graft adapter turns a WebsiteHost into a Graft surface.
+import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, posix, relative, sep } from 'node:path';
 import { effectiveDeny } from './config.ts';
@@ -59,17 +60,24 @@ export const SLOT = /^(?:site|page(?:\.[a-z][a-z0-9-]*)+)$/;
 
 /**
  * The slot of a page, as checks name pages: `index.html` and `.` are
- * `page.index`, `docs.html` and `docs` are `page.docs`, `docs/intro.html`
- * is `page.docs.intro`. Segments are lowercased; other characters become
- * dashes, and a segment that does not start with a letter gets a `p`.
+ * `page.index`, `docs.html`, `docs` and `docs/index.html` are `page.docs`
+ * (one route), `docs/intro.html` is `page.docs.intro`.
+ *
+ * A slot depends on its own page only, so adding or removing other pages
+ * never renames it. A segment that is not already lowercase letters, digits
+ * and dashes starting with a letter is slugged and gets the first six hex
+ * digits of its sha256: `About` is `about-<hash>`, `中文` is `p-<hash>`.
+ * Different routes therefore get different slots.
  */
 export function pageSlot(page: string): string {
 	let route = page.replace(/^\.\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html?$/i, '');
 	route = route.replace(/(?:^|\/)index$/, '');
 	const segments = route === '' ? ['index'] : route.split('/');
-	return `page.${segments.map((s) => {
-		const slug = s.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'index';
-		return /^[a-z]/.test(slug) ? slug : `p${slug}`;
+	return `page.${segments.map((segment) => {
+		if (/^[a-z][a-z0-9-]*$/.test(segment)) return segment;
+		const slug = segment.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+		const hash = createHash('sha256').update(segment).digest('hex').slice(0, 6);
+		return `${/^[a-z]/.test(slug) ? slug : `p${slug ? `-${slug}` : ''}`}-${hash}`;
 	}).join('.')}`;
 }
 
@@ -89,14 +97,11 @@ export interface WebsiteHost {
  */
 export function websiteHost(config: LabConfig, files: readonly string[], pages: readonly string[]): WebsiteHost {
 	const slots: WebsiteHost['slots'] = { [SITE_SLOT]: { title: 'The whole site', page: null } };
-	// Two pages can map to one slot (`docs.html` and `docs/index.html`, or
-	// names with no Latin letters). The first, in sorted order, keeps it; the
-	// others get `-2`, `-3`, ... on the last segment, so every page has a slot.
+	// Pages that are one route (`docs.html` and `docs/index.html`) share a
+	// slot; the first in sorted order is its anchor.
 	for (const page of [...pages].toSorted()) {
-		const base = pageSlot(page);
-		let slot = base;
-		for (let n = 2; slots[slot]; n++) slot = `${base}-${n}`;
-		slots[slot] = { title: `The page ${page}`, page };
+		const slot = pageSlot(page);
+		slots[slot] ??= { title: `The page ${page}`, page };
 	}
 	const deny = effectiveDeny(config);
 	const scopes: WebsiteHost['scopes'] = {};

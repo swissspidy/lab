@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateSurface } from '@swissspidy/graft-core';
-import { validateConfig, websiteHost } from '@lab/core';
+import { pageSlot, validateConfig, websiteHost } from '@lab/core';
 import type { ExperimentSpec, Observation } from '@lab/core';
 import { GraftSpecCheck, GraftSpecProposer, fromGraftMarkdown, graftSurface, recordingGraftSpecs, toGraftMarkdown } from '../src/index.ts';
 
@@ -97,12 +97,27 @@ describe('The website as a Graft surface', () => {
 		assert.deepEqual(codes, ['graft-permission-unknown-scope']);
 	});
 
-	it('gives every page its own slot when two pages map to the same one', () => {
-		const clash = websiteHost(config, files, ['docs/中文.html', 'docs/指南.html', 'docs.html', 'docs/index.html']);
+	it('gives every route its own slot, derived from that page alone', () => {
+		assert.equal(pageSlot('docs.html'), 'page.docs');
+		assert.equal(pageSlot('docs/index.html'), 'page.docs');
+		assert.equal(pageSlot('.'), 'page.index');
+		assert.match(pageSlot('About.html'), /^page\.about-[0-9a-f]{6}$/);
+		assert.match(pageSlot('404.html'), /^page\.p-404-[0-9a-f]{6}$/);
+		const zh = pageSlot('docs/中文.html');
+		const guide = pageSlot('docs/指南.html');
+		assert.match(zh, /^page\.docs\.p-[0-9a-f]{6}$/);
+		assert.notEqual(zh, guide);
+
+		const pages = ['docs/中文.html', 'docs/指南.html', 'docs.html', 'docs/index.html'];
+		const before = websiteHost(config, files, pages);
 		assert.deepEqual(
-			Object.entries(clash.slots).map(([slot, { page }]) => [slot, page]).toSorted(),
-			[['page.docs', 'docs.html'], ['page.docs-2', 'docs/index.html'], ['page.docs.index', 'docs/中文.html'], ['page.docs.index-2', 'docs/指南.html'], ['site', null]],
+			Object.entries(before.slots).map(([slot, { page }]) => [slot, page]).toSorted(),
+			[['page.docs', 'docs.html'], [zh, 'docs/中文.html'], [guide, 'docs/指南.html'], ['site', null]].toSorted(),
 		);
-		assert.deepEqual(new GraftSpecCheck().check({ ...spec, mount: 'page.docs.index-2' }, clash), []);
+		// A new page that sorts first renames nothing: every slot keeps its page.
+		const after = websiteHost(config, files, ['docs/一.html', ...pages]);
+		for (const [slot, value] of Object.entries(before.slots)) assert.deepEqual(after.slots[slot], value);
+		assert.equal(Object.keys(after.slots).length, Object.keys(before.slots).length + 1);
+		assert.deepEqual(new GraftSpecCheck().check({ ...spec, mount: guide }, after), []);
 	});
 });
