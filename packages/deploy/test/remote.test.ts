@@ -18,6 +18,8 @@ const configWith = (deploy?: object): LabConfig =>
 		...(deploy ? { deploy } : {}),
 	}).config!;
 
+const BUDGETS = { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 20 };
+
 describe('remote collector', () => {
 	let dir: string;
 	let collector: Awaited<ReturnType<typeof startCollector>>;
@@ -195,7 +197,7 @@ describe('personal tweaks in the collector', () => {
 
 	it('stores a verified tweak with the token, serves its CSS to anyone, and the record only with the token', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
-		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: {} });
+		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: {}, budgets: BUDGETS });
 		try {
 			const put = (body: unknown, token = 'secret-token', id = 'tw-0123456789ab') =>
 				fetch(`${collector.url}/tweaks/${id}`, { method: 'PUT', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
@@ -221,6 +223,10 @@ describe('personal tweaks in the collector', () => {
 			await collector.close();
 			rmSync(dir, { recursive: true, force: true });
 		}
+	});
+
+	it('needs the site’s budgets to store tweaks', async () => {
+		await assert.rejects(startCollector({ root: tmpdir(), store: new MetricStore({ intervalHours: 6 }), tweaks: {} }), { code: 'collector-budgets-required' });
 	});
 
 	it('refuses to store a tweak over the site’s bundle budget', async () => {
@@ -252,7 +258,7 @@ describe('personal tweaks in the collector', () => {
 	it('answers 500, not 400, when storing fails for its own reasons', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
 		writeFileSync(join(dir, 'tweaks'), 'a file where the directory should be');
-		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: {} });
+		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: {}, budgets: BUDGETS });
 		try {
 			const res = await fetch(`${collector.url}/tweaks/tw-0123456789ab`, { method: 'PUT', headers: { authorization: 'Bearer secret-token' }, body: JSON.stringify(record()) });
 			assert.equal(res.status, 500);
