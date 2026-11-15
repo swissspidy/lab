@@ -42,6 +42,24 @@ If the lab cannot be reached, every visitor gets the production site. The kill
 switch takes effect within the proxy's cache time (5 seconds by default,
 `cacheMs`).
 
+With `tweaks: {}` in the config, the same proxy serves personal tweaks: link
+visitors to `/_lab/tweak/<id>` to opt in (`?off` to opt out, `?to=/path` to
+land on a page of this site), and the beacon script adds the tweak's
+stylesheet from `/_lab/tweaks/<id>.css`. A tweaked visitor is in no experiment.
+A script runs after the first paint; to apply tweaks before it, render their
+links in the root layout too (the script skips links already there):
+
+```jsx
+import { cookies } from 'next/headers';
+import { COOKIE_TWEAKS, tweakStylesheets } from '@lab/next';
+// in an async RootLayout, inside <head>:
+{tweakStylesheets((await cookies()).get(COOKIE_TWEAKS)?.value).map((t) => (
+	<link key={t.id} rel="stylesheet" href={t.href} data-lab-tweak={t.id} />
+))}
+```
+
+Reading cookies makes the layout render per request.
+
 ## 2. The collector
 
 Run `lab collect` somewhere always on (a small VM or container), with
@@ -53,6 +71,17 @@ LAB_TOKEN=... LAB_HOST=0.0.0.0 npx lab collect path/to/site --port 8081
 
 `GET /state` and `POST /beacon` are public; the proxy uses them.
 `PUT /state` and `GET /metrics` need the token.
+
+With `tweaks` in the config where `lab collect` runs, the collector also
+keeps personal tweaks:
+
+| Route | Who |
+| --- | --- |
+| `PUT /tweaks/<id>` | token: `lab tweak` stores a verified tweak |
+| `GET /tweaks/<id>.json` | token: the stored record |
+| `GET`, `HEAD /tweaks/<id>.css` | public: the stylesheet the proxy forwards to visitors |
+
+Without `tweaks`, these routes do not exist.
 
 ## 3. The config
 

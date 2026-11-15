@@ -16,16 +16,18 @@ import {
 	siteCommit,
 	specFromLedger,
 	tick,
+	newTweakId,
+	verifyTweak,
 } from '@lab/core';
-import type { Diagnostic, IterationResult, LabConfig, TickResult } from '@lab/core';
-import { AnthropicProvider, ModelBuilder, ModelProposer, ReplayBuilder, ReplayProposer } from '@lab/agent';
-import { CommandPublisher, FileState, MetricStore, OriginDeployer, ReferenceDeployer, RemoteMeter, RemoteState, StoreMeter, startCollector, startEdgeServer } from '@lab/deploy';
+import type { Diagnostic, IterationResult, LabConfig, TickResult, Tweak } from '@lab/core';
+import { AnthropicProvider, ModelBuilder, ModelProposer, ModelTweaker, ReplayBuilder, ReplayProposer } from '@lab/agent';
+import { CommandPublisher, FileState, FileTweakStore, MetricStore, RemoteTweakStore, OriginDeployer, ReferenceDeployer, RemoteMeter, RemoteState, StoreMeter, startCollector, startEdgeServer } from '@lab/deploy';
 import type { StateStore } from '@lab/deploy';
-import { LocalSandbox } from '@lab/sandbox';
+import { CssInjectingProxy, LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier, loadInvariants } from '@lab/verify';
 import { GraftSpecCheck, GraftSpecProposer, assayInvariant, checkInvariantLock, compileInvariant, isAssayInvariant, recordingGraftSpecs, writeCompiledInvariant } from '@lab/adapters';
 import { writeReport } from '@lab/report';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const USAGE = `Usage: lab <command> [dir] [options]
 
@@ -50,6 +52,9 @@ Commands:
   collect [dir]             Run the collector for sites with their own proxy
                             (@lab/next): GET /state, POST /beacon, and with
                             LAB_TOKEN, PUT /state and GET /metrics.
+  tweak [dir]               Verify a personal tweak and store it for visitors
+                            to opt into: --spec and --css, or --request for a
+                            model to write one. Needs \`tweaks\` in the config.
 
 Options:
   --experiment <d>   Replay the experiment in <d> (spec.json or a Graft
@@ -62,6 +67,9 @@ Options:
   --port <n>         For serve. Default 8080.
   --by <name>        For approve and invariants compile: who approved or
                      locked. Default: $USER.
+  --spec <file>      For tweak: the tweak spec (JSON). An id is made if missing.
+  --css <file>       For tweak: its stylesheet.
+  --request <text>   For tweak: what the visitor wants; a model writes it.
   --json             Print results as JSON.
   -h, --help         Show this help.
 
@@ -111,6 +119,9 @@ async function main(argv: string[]): Promise<number> {
 			port: { type: 'string' },
 			by: { type: 'string' },
 			out: { type: 'string' },
+			spec: { type: 'string' },
+			css: { type: 'string' },
+			request: { type: 'string' },
 		},
 	});
 	const [command, ...rest] = positionals;
@@ -118,7 +129,7 @@ async function main(argv: string[]): Promise<number> {
 		process.stdout.write(`${USAGE}\n`);
 		return command || values.help ? 0 : 64;
 	}
-	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect', 'invariants'];
+	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect', 'tweak', 'invariants'];
 	if (!known.includes(command)) {
 		process.stderr.write(`Unknown command \`${command}\`.\n\n${USAGE}\n`);
 		return 64;
@@ -163,7 +174,7 @@ async function main(argv: string[]): Promise<number> {
 	const ledger = new FileLedger(resolve(values.ledger ?? resolve(siteDir, LEDGER_FILE)));
 	const site = { dir: siteDir, commit: siteCommit(siteDir) };
 
-	if (process.env.LAB_URL && !process.env.LAB_TOKEN && ['run', 'status', 'kill'].includes(command)) {
+	if (process.env.LAB_URL && !process.env.LAB_TOKEN && ['run', 'status', 'kill', 'tweak'].includes(command)) {
 		// Never fall back to local state when a collector is configured: a local kill would not stop it.
 		process.stderr.write('LAB_URL is set but LAB_TOKEN is not. Set both to use the collector, or unset LAB_URL.\n');
 		return 3;
@@ -299,11 +310,47 @@ async function main(argv: string[]): Promise<number> {
 		}
 		case 'collect': {
 			const port = Number(values.port ?? 8081);
-			const collector = await startCollector({ root: hostDir, store: store(), port, host: process.env.LAB_HOST ?? '127.0.0.1', ...(process.env.LAB_TOKEN ? { token: process.env.LAB_TOKEN } : {}) });
+			const collector = await startCollector({ root: hostDir, store: store(), port, host: process.env.LAB_HOST ?? '127.0.0.1', ...(process.env.LAB_TOKEN ? { token: process.env.LAB_TOKEN } : {}), ...(config.tweaks ? { tweaks: config.tweaks, budgets: config.budgets } : {}) });
 			process.stdout.write(`Collector at ${collector.url} (state in ${hostDir})${process.env.LAB_TOKEN ? '' : '. No LAB_TOKEN: remote state writes and metric reads are off'}. Ctrl-C to stop.\n`);
 			await new Promise<void>((done) => process.once('SIGINT', done));
 			await collector.close();
 			return 0;
+		}
+		case 'tweak': {
+			if (!config.tweaks) {
+				process.stderr.write('tweaks-disabled: This site offers no personal tweaks. Add `tweaks: {}` to lab.config.ts to offer them.\n');
+				return 3;
+			}
+			if (Boolean(values.request) === Boolean(values.spec || values.css) || (!values.request && !(values.spec && values.css))) {
+				process.stderr.write('Usage: lab tweak [dir] --spec <file> --css <file>, or lab tweak [dir] --request "<what the visitor wants>"\n');
+				return 64;
+			}
+			let tweak: Tweak;
+			if (values.request) {
+				tweak = await new ModelTweaker({ provider: new AnthropicProvider(), config }).write(values.request, site);
+			} else {
+				const spec = JSON.parse(readFileSync(resolve(values.spec!), 'utf8')) as Tweak['spec'];
+				tweak = { spec: { ...spec, id: spec.id ?? newTweakId() }, css: readFileSync(resolve(values.css!), 'utf8') };
+			}
+			const outcome = await verifyTweak(
+				{ config, site, sandbox: new LocalSandbox({ config }), injector: new CssInjectingProxy(), verifier: new BrowserVerifier({ config, siteDir, invariantKinds: [assayInvariant] }), evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')), specCheck: new GraftSpecCheck() },
+				tweak,
+			);
+			if (outcome.outcome === 'verified') {
+				await (remote ? new RemoteTweakStore({ ...remote, config }) : new FileTweakStore(hostDir, config)).put(outcome.record);
+			}
+			if (values.json) {
+				process.stdout.write(`${JSON.stringify(outcome, null, '\t')}\n`);
+			} else if (outcome.outcome === 'verified') {
+				process.stdout.write(`${tweak.spec.id}: verified (${outcome.results.length} checks) and stored.\n  Visitors opt in at /_lab/tweak/${tweak.spec.id} and out at /_lab/tweak/${tweak.spec.id}?off\n`);
+			} else if (outcome.outcome === 'rejected') {
+				process.stdout.write(`${tweak.spec.id}: rejected\n`);
+				for (const d of outcome.diagnostics) process.stdout.write(`  ${format(d)}\n`);
+				for (const f of outcome.failures) process.stdout.write(`  ✘ ${f.check}: ${f.message}\n`);
+			} else {
+				process.stdout.write(`${tweak.spec.id}: aborted\n  ${outcome.reason}\n`);
+			}
+			return outcome.outcome === 'verified' ? 0 : outcome.outcome === 'rejected' ? 1 : 2;
 		}
 		case 'publish': {
 			if (!(deployer instanceof ReferenceDeployer)) {

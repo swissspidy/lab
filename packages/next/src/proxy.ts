@@ -7,7 +7,7 @@
 // `lab` is the lab's collector: it serves the current state at /state and
 // takes beacons at /beacon. Next.js is passed in, so this package does not
 // depend on a Next.js version.
-import { BEACON_PATH, COOKIE_BUCKET, COOKIE_EXPERIMENT, COOKIE_VISITOR, parseState, route } from './route.ts';
+import { BEACON_PATH, COOKIE_BUCKET, COOKIE_EXPERIMENT, COOKIE_TWEAKS, COOKIE_VISITOR, MAX_TWEAKS, TWEAK_CSS, TWEAK_OPT_IN, isTweakId, parseState, parseTweaks, route } from './route.ts';
 import type { LabState } from './route.ts';
 
 interface CookieStore {
@@ -75,6 +75,36 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 		return cached?.state ?? value;
 	}
 
+	/** Opting in or out of a tweak: the cookie, then back to the page the link named. */
+	async function optIn(url: URL, current: string | undefined): Promise<Response> {
+		const name = url.pathname.slice(TWEAK_OPT_IN.length);
+		let tweaks = parseTweaks(current);
+		if (name === 'off') {
+			tweaks = [];
+		} else if (!isTweakId(name)) {
+			return new Response('No such tweak.', { status: 404 });
+		} else if (url.searchParams.has('off')) {
+			tweaks = tweaks.filter((id) => id !== name);
+		} else if (!tweaks.includes(name)) {
+			// Only a tweak the lab has: a link cannot set an id nobody verified.
+			const known = base ? await doFetch(`${base}/tweaks/${name}.css`, { method: 'HEAD', signal: AbortSignal.timeout(1500) }).then((r) => r.ok, () => false) : false;
+			if (!known) return new Response('No such tweak.', { status: 404 });
+			tweaks = [...tweaks, name].slice(-MAX_TWEAKS);
+		}
+		// Back to a path on this site only: never an open redirect.
+		const to = url.searchParams.get('to') ?? '/';
+		// Absolute, on this site's origin: Next.js refuses a relative Location from a proxy. The
+		// destination is parsed first and kept only if it is still on this origin: a parser drops
+		// tabs and newlines, so "/\t/evil.example" would otherwise become "//evil.example".
+		let destination: URL | null = null;
+		try {
+			destination = new URL(to, url.origin);
+		} catch {}
+		const location = to.startsWith('/') && destination?.origin === url.origin ? destination.href : new URL('/', url.origin).href;
+		const cookie = tweaks.length > 0 ? `${COOKIE_TWEAKS}=${tweaks.join(',')}; Path=/; Max-Age=${YEAR}; SameSite=Lax` : `${COOKIE_TWEAKS}=; Path=/; Max-Age=0; SameSite=Lax`;
+		return new Response(null, { status: 303, headers: { location, 'set-cookie': cookie, 'cache-control': 'no-store' } });
+	}
+
 	return async (request) => {
 		const url = new URL(request.url);
 		if (url.pathname === BEACON_PATH) {
@@ -84,10 +114,24 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 			if (base && body.length <= 1024) await doFetch(`${base}/beacon`, { method: 'POST', body, signal: AbortSignal.timeout(1500) }).catch(() => undefined);
 			return new Response(null, { status: 204 });
 		}
+		if (url.pathname.startsWith(TWEAK_CSS) && request.method === 'GET') {
+			const id = url.pathname.slice(TWEAK_CSS.length).replace(/\.css$/, '');
+			if (!base || !isTweakId(id)) return new Response(null, { status: 404 });
+			// The body can fail after the headers arrived: both count as no stylesheet.
+			const css = await doFetch(`${base}/tweaks/${id}.css`, { signal: AbortSignal.timeout(1500) })
+				.then((res) => (res.ok ? res.text() : null))
+				.catch(() => null);
+			if (css === null) return new Response(null, { status: 404 });
+			return new Response(css, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } });
+		}
+		if (url.pathname.startsWith(TWEAK_OPT_IN) && request.method === 'GET') {
+			return optIn(url, request.cookies.get(COOKIE_TWEAKS)?.value);
+		}
 		// Not configured (a variant deployment, say): change nothing, set no cookies.
 		// A variant served behind the site's proxy must not overwrite its cookies.
 		if (!base) return NextResponse.next();
-		const decision = route(request.cookies.get(COOKIE_VISITOR)?.value, await state());
+		const tweaked = parseTweaks(request.cookies.get(COOKIE_TWEAKS)?.value).length > 0;
+		const decision = route(request.cookies.get(COOKIE_VISITOR)?.value, await state(), tweaked);
 		// Never rewrite to ourselves: a variant deployment that also runs this proxy would loop.
 		if (decision.rewriteTo && new URL(decision.rewriteTo).host === url.host) {
 			decision.rewriteTo = null;

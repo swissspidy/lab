@@ -71,44 +71,16 @@ export function intentKey(intent: string): string {
 }
 
 /**
- * Checks a proposed spec against the config and the ledger. A spec with
- * errors never reaches Build.
+ * Checks a spec's acceptance checks: each well formed, each naming a
+ * criterion, and every criterion covered. Shared by experiment specs and
+ * personal tweaks.
  */
-export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEvent[] = []): { spec: ExperimentSpec | null; diagnostics: Diagnostic[] } {
-	const diagnostics: Diagnostic[] = [];
-	const error = (code: string, path: string, message: string) => diagnostics.push({ code, severity: 'error', path, message });
-	if (!isObject(raw)) {
-		error('spec-not-object', '', 'A spec must be a JSON object.');
-		return { spec: null, diagnostics };
-	}
-	const allowed = new Set(['id', 'hypothesis', 'intent', 'acceptance', 'expectedEffect', 'touches', 'mount', 'permissions', 'source', 'checks']);
-	for (const key of Object.keys(raw)) if (!allowed.has(key)) error('spec-unknown-key', key, `Unknown key \`${key}\`.`);
-	if (typeof raw.id !== 'string' || !ID.test(raw.id)) error('spec-id', 'id', '`id` must look like `exp-0007`: lowercase letters, digits and dashes.');
-	for (const key of ['hypothesis', 'intent'] as const) if (!isText(raw[key])) error('spec-missing-text', key, `\`${key}\` must be a non-empty sentence.`);
-	if (!Array.isArray(raw.acceptance) || raw.acceptance.length === 0 || !raw.acceptance.every(isText)) {
-		error('spec-acceptance', 'acceptance', '`acceptance` must list at least one criterion.');
-	}
-	const effect = new RegExp(`^${config.metric.id} (up|down)$`);
-	if (typeof raw.expectedEffect !== 'string' || !effect.test(raw.expectedEffect)) {
-		error('spec-effect', 'expectedEffect', `\`expectedEffect\` must be \`${config.metric.id} up\` or \`${config.metric.id} down\`.`);
-	}
-	if (!Array.isArray(raw.touches) || !raw.touches.every(isText)) error('spec-touches', 'touches', '`touches` must list the paths the change touches.');
-	if (typeof raw.mount !== 'string' || !SLOT.test(raw.mount)) error('spec-mount', 'mount', '`mount` must be `site`, or the slot of one page, such as `page.index` or `page.docs`.');
-	if (!Array.isArray(raw.permissions) || raw.permissions.length === 0) {
-		error('spec-permissions', 'permissions', `\`permissions\` must list the kinds of files the change touches: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
-	} else {
-		for (const [i, scope] of raw.permissions.entries()) {
-			if (!isWebsiteScope(scope)) error('spec-permission-unknown', `permissions.${i}`, `Unknown permission \`${show(scope)}\`. Available: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
-		}
-		if (new Set(raw.permissions).size !== raw.permissions.length) error('spec-permissions', 'permissions', '`permissions` lists a scope twice.');
-	}
-	if (raw.source !== 'agent' && raw.source !== 'visitors') error('spec-source', 'source', '`source` must be `agent` or `visitors`.');
-	if (!Array.isArray(raw.checks)) {
+export function validateChecks(checks: unknown, count: number, error: (code: string, path: string, message: string) => void): void {
+	if (!Array.isArray(checks)) {
 		error('spec-checks', 'checks', '`checks` must list acceptance checks.');
 	} else {
-		const count = Array.isArray(raw.acceptance) ? raw.acceptance.length : 0;
 		const covered = new Set<number>();
-		for (const [i, c] of raw.checks.entries()) {
+		for (const [i, c] of checks.entries()) {
 			const path = `checks.${i}`;
 			if (!isObject(c)) {
 				error('spec-check-invalid', path, 'A check must be an object.');
@@ -144,6 +116,42 @@ export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEve
 			if (!covered.has(i)) error('spec-criterion-unchecked', `acceptance.${i}`, `Criterion ${i} has no check. Every criterion needs one that can be checked objectively.`);
 		}
 	}
+}
+
+/**
+ * Checks a proposed spec against the config and the ledger. A spec with
+ * errors never reaches Build.
+ */
+export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEvent[] = []): { spec: ExperimentSpec | null; diagnostics: Diagnostic[] } {
+	const diagnostics: Diagnostic[] = [];
+	const error = (code: string, path: string, message: string) => diagnostics.push({ code, severity: 'error', path, message });
+	if (!isObject(raw)) {
+		error('spec-not-object', '', 'A spec must be a JSON object.');
+		return { spec: null, diagnostics };
+	}
+	const allowed = new Set(['id', 'hypothesis', 'intent', 'acceptance', 'expectedEffect', 'touches', 'mount', 'permissions', 'source', 'checks']);
+	for (const key of Object.keys(raw)) if (!allowed.has(key)) error('spec-unknown-key', key, `Unknown key \`${key}\`.`);
+	if (typeof raw.id !== 'string' || !ID.test(raw.id)) error('spec-id', 'id', '`id` must look like `exp-0007`: lowercase letters, digits and dashes.');
+	for (const key of ['hypothesis', 'intent'] as const) if (!isText(raw[key])) error('spec-missing-text', key, `\`${key}\` must be a non-empty sentence.`);
+	if (!Array.isArray(raw.acceptance) || raw.acceptance.length === 0 || !raw.acceptance.every(isText)) {
+		error('spec-acceptance', 'acceptance', '`acceptance` must list at least one criterion.');
+	}
+	const effect = new RegExp(`^${config.metric.id} (up|down)$`);
+	if (typeof raw.expectedEffect !== 'string' || !effect.test(raw.expectedEffect)) {
+		error('spec-effect', 'expectedEffect', `\`expectedEffect\` must be \`${config.metric.id} up\` or \`${config.metric.id} down\`.`);
+	}
+	if (!Array.isArray(raw.touches) || !raw.touches.every(isText)) error('spec-touches', 'touches', '`touches` must list the paths the change touches.');
+	if (typeof raw.mount !== 'string' || !SLOT.test(raw.mount)) error('spec-mount', 'mount', '`mount` must be `site`, or the slot of one page, such as `page.index` or `page.docs`.');
+	if (!Array.isArray(raw.permissions) || raw.permissions.length === 0) {
+		error('spec-permissions', 'permissions', `\`permissions\` must list the kinds of files the change touches: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
+	} else {
+		for (const [i, scope] of raw.permissions.entries()) {
+			if (!isWebsiteScope(scope)) error('spec-permission-unknown', `permissions.${i}`, `Unknown permission \`${show(scope)}\`. Available: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
+		}
+		if (new Set(raw.permissions).size !== raw.permissions.length) error('spec-permissions', 'permissions', '`permissions` lists a scope twice.');
+	}
+	if (raw.source !== 'agent' && raw.source !== 'visitors') error('spec-source', 'source', '`source` must be `agent` or `visitors`.');
+	validateChecks(raw.checks, Array.isArray(raw.acceptance) ? raw.acceptance.length : 0, error);
 
 	if (diagnostics.length === 0) {
 		const spec = raw as unknown as ExperimentSpec;

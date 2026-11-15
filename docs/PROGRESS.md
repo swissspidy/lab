@@ -33,6 +33,63 @@ exp-0003 reverted, exp-0004 rejected, exp-0005 killed. The week starts on
 `invariants.search-returns-results`, exp-0008 (no effect) still live at the
 end. The entries below are left as they were run.
 
+## After M5: personal tweaks (2026-11-15)
+
+Pascal asked for both halves of "personal and experimental customizations":
+experiments on Graft customizations (Graft ADR 0016, in Graft's WordPress
+host) and personal tweaks on public websites (here).
+
+**Built**
+
+- `TweakSpec`, `Tweak` and `TweakRecord` in `@lab/core`. A tweak is a Graft
+  spec for host `website` with `permissions: ["style:write"]` only, plus CSS.
+  `validateTweakSpec` (codes `tweak-*`; checks shared with experiment specs
+  through `validateChecks`) and `checkTweakCss`, the static gate:
+  `static.tweak-size` and `static.tweak-css` (no `url()`, `image-set()`,
+  `@import`, `@font-face`, `expression()`, `behavior`, `-moz-binding`,
+  `javascript:`, `content`, markup or backslash escapes).
+- `verifyTweak`: the static gate, Graft's mount check, then the site with and
+  without the tweak's CSS through the verifier. Config `tweaks` turns it on.
+- `CssInjectingProxy` in `@lab/sandbox`: serves a running site with the CSS
+  added to every HTML page, for static and server sites alike.
+- Collector: `PUT /tweaks/<id>` and `GET /tweaks/<id>.json` with the token,
+  `GET`/`HEAD /tweaks/<id>.css` public; `FileTweakStore` and
+  `RemoteTweakStore` re-check every record against the gate.
+- `@lab/next`: `/_lab/tweak/<id>` opts in (only a tweak the lab has; never an
+  open redirect), `/_lab/tweaks/<id>.css` serves it, the beacon script adds
+  the stylesheets and sends nothing without an experiment, and `route()`
+  leaves a tweaked visitor out of every experiment.
+- `ModelTweaker` in `@lab/agent`: a model writes a tweak from a visitor's
+  request, fenced as data, retried with what failed.
+- `lab tweak [dir] --spec --css` or `--request`.
+
+**Verified**
+
+- `npm run check`: unit tests for every gate and code, the injector, the
+  collector routes and auth, the proxy's opt-in, opt-out, redirects and
+  exclusion, the model tweaker, and the CLI.
+- `fixtures/test/tweaks.test.ts`, real Chromium on the fixture site: a
+  restyle passes; hiding the signup form fails `invariants.signup-submits`;
+  unreadable text fails the aXe budget; a mount on a missing page fails
+  `graft-mount-unknown-slot`.
+- `examples/test/nextjs-proxy.test.ts`: a tweak verified on the Next.js
+  server app, stored, and opted into by a real visitor in the variant
+  bucket, who then sees the tweak, gets the baseline and no experiment, and
+  can opt out. Running it found two real bugs, both fixed: the collector
+  did not answer `HEAD`, and Next.js refuses a relative `Location` from a
+  proxy. The first tweak tried there (a 3.5rem heading) was rightly
+  rejected: the docs page scrolled sideways at 390px.
+
+**Not verified**
+
+- `ModelTweaker` with a real model (no key here).
+- There is no visitor-facing form: tweaks are made with `lab tweak`, by the
+  site's operator or a backend the site owns, and shared as links. A public
+  form would need rate limits for the model and the verifier.
+- On Next.js, the beacon script adds the stylesheet after the first paint
+  unless the root layout renders it with `tweakStylesheets()`, as the
+  example does; the end-to-end test checks the server renders it.
+
 ## After M5: Assay invariants (2026-11-15)
 
 Pascal asked why the invariants gate does not use Assay. The inventory had

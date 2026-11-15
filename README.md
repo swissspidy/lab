@@ -190,6 +190,35 @@ edited after it was locked fails, and so does an outcome Assay cannot decide.
 
 Assay is installed from a git commit until it is published to npm.
 
+## Personal tweaks
+
+A site can also let visitors restyle it for themselves: larger text, more
+contrast, less decoration. A tweak is a Graft spec for host `website` that may
+only change styles (`permissions: ["style:write"]`), plus its CSS. Add
+`tweaks: {}` to `lab.config.ts` to offer them.
+
+```sh
+npm run lab -- tweak fixtures/site --spec tweak.json --css tweak.css
+npm run lab -- tweak fixtures/site --request "larger text, please"   # a model writes it
+```
+
+A tweak goes through the same verification as a variant, with its CSS added to
+every page, on top of a static gate:
+
+- **No requests, script or text.** The CSS may not use `url()`, `@import`,
+  `@font-face`, `content`, script-like properties or backslash escapes, and is
+  at most 16 KB (`tweaks.maxBytes`).
+- **The site's own rules hold.** Hiding the signup form fails the site's
+  invariant; unreadable text fails the aXe budget; a heading that makes a page
+  scroll sideways on a phone fails the overflow budget.
+- **Graft checks the mount** against the site's pages.
+
+A verified tweak is stored where the collector serves it. A visitor opts in
+with a link, `/_lab/tweak/<id>` (and out with `?off`). `@lab/next` keeps the
+choice in a cookie and adds the stylesheet to every page. Tweaks are never
+measured: a visitor with a tweak is served the baseline and left out of every
+experiment, so a personal view cannot skew a result.
+
 ## How it is built
 
 - `packages/core`: the stage interfaces (`src/types.ts`), the config

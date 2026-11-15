@@ -14,4 +14,5 @@ export default {
 	budgets: { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 20 },
 	traffic: { share: 0.5, minSamplesPerBucket: 1000, maxDays: 14, intervalHours: 6 },
 	autonomy: 'gated',
+	tweaks: {},
 };

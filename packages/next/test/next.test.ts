@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignBucket as hostBucket } from '@lab/deploy';
-import { assignBucket, createLabProxy, labBeaconScript, parseState, route } from '../src/index.ts';
+import { assignBucket, createLabProxy, labBeaconScript, parseState, parseTweaks, route, tweakStylesheets } from '../src/index.ts';
 import type { LabState } from '../src/index.ts';
 
 type Call = { kind: 'next' | 'rewrite'; to?: string; cookies: Record<string, string> };
@@ -146,5 +146,81 @@ describe('@lab/next', () => {
 		assert.match(script, /lab_exp/);
 		assert.match(script, /"\/_lab\/beacon"/);
 		assert.doesNotThrow(() => new Function(script));
+	});
+
+	describe('personal tweaks', () => {
+		const TW = 'tw-0123456789ab';
+		const lab = (known: string[] = [TW]) =>
+			(async (url: string, init?: RequestInit) => {
+				const tweak = /\/tweaks\/(tw-[0-9a-f]{12})\.css$/.exec(url)?.[1];
+				if (tweak) return known.includes(tweak) ? new Response(init?.method === 'HEAD' ? null : 'h1 { font-size: 3rem }', { headers: { 'content-type': 'text/css' } }) : new Response(null, { status: 404 });
+				return Response.json(live());
+			}) as typeof fetch;
+
+		it('opts a visitor in to a tweak the lab has, and back to the page the link names', async () => {
+			const { NextResponse } = fakeNext();
+			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab() });
+			const res = (await proxy(request(`http://site.test/_lab/tweak/${TW}?to=/docs`))) as Response;
+			assert.equal(res.status, 303);
+			assert.equal(res.headers.get('location'), 'http://site.test/docs');
+			assert.match(res.headers.get('set-cookie') ?? '', new RegExp(`^lab_tweaks=${TW}; Path=/; Max-Age=\\d+; SameSite=Lax$`));
+			const off = (await proxy(request(`http://site.test/_lab/tweak/${TW}?off`, { lab_tweaks: `${TW},tw-ffffffffffff` }))) as Response;
+			assert.match(off.headers.get('set-cookie') ?? '', /^lab_tweaks=tw-ffffffffffff;/);
+			const all = (await proxy(request('http://site.test/_lab/tweak/off', { lab_tweaks: TW }))) as Response;
+			assert.match(all.headers.get('set-cookie') ?? '', /^lab_tweaks=; Path=\/; Max-Age=0/);
+		});
+
+		it('refuses a tweak the lab does not have, and never redirects off the site', async () => {
+			const { NextResponse } = fakeNext();
+			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab([]) });
+			assert.equal(((await proxy(request(`http://site.test/_lab/tweak/${TW}`))) as Response).status, 404);
+			assert.equal(((await proxy(request('http://site.test/_lab/tweak/not-an-id'))) as Response).status, 404);
+			const known = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab() });
+			for (const to of ['https://evil.example/', '//evil.example/', '/\\evil.example', '/\t/evil.example/', '/\n/evil.example/']) {
+				const res = (await known(request(`http://site.test/_lab/tweak/${TW}?to=${encodeURIComponent(to)}`))) as Response;
+				assert.equal(res.headers.get('location'), 'http://site.test/', to);
+			}
+			assert.equal(((await createLabProxy({ NextResponse, lab: undefined })(request(`http://site.test/_lab/tweak/${TW}`))) as Response).status, 404, 'no lab, no tweaks');
+		});
+
+		it('serves a tweak’s stylesheet from the lab', async () => {
+			const { NextResponse } = fakeNext();
+			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab() });
+			const css = (await proxy(request(`http://site.test/_lab/tweaks/${TW}.css`))) as Response;
+			assert.equal(css.status, 200);
+			assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
+			assert.equal(await css.text(), 'h1 { font-size: 3rem }');
+			assert.equal(((await proxy(request('http://site.test/_lab/tweaks/tw-ffffffffffff.css'))) as Response).status, 404);
+			assert.equal(((await proxy(request('http://site.test/_lab/tweaks/state.css'))) as Response).status, 404, 'only a tweak id');
+		});
+
+		it('answers 404 when the lab’s stylesheet body fails after its headers', async () => {
+			const { NextResponse } = fakeNext();
+			const failingBody = new ReadableStream({ start: (c) => c.error(new Error('reset')) });
+			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: async () => new Response(failingBody, { status: 200 }) });
+			assert.equal(((await proxy(request(`http://site.test/_lab/tweaks/${TW}.css`))) as Response).status, 404);
+		});
+
+		it('leaves a tweaked visitor out of the experiment: baseline, and no experiment for the beacon', async () => {
+			const { calls, NextResponse } = fakeNext();
+			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab() });
+			await proxy(request('http://site.test/', { lab_vid: visitorIn('variant'), lab_tweaks: TW }));
+			assert.equal(calls[0]!.kind, 'next');
+			assert.equal(calls[0]!.cookies.lab_exp, '');
+			assert.equal(calls[0]!.cookies.lab_bucket, 'baseline');
+			assert.deepEqual(parseTweaks(`${TW},bogus,${TW},tw-1,tw-111111111111`), [TW, 'tw-111111111111']);
+		});
+
+		it('gives a server-rendered layout the tweak stylesheets, valid ids only', () => {
+			assert.deepEqual(tweakStylesheets(`${TW},bogus,"><script>`), [{ id: TW, href: `/_lab/tweaks/${TW}.css` }]);
+			assert.deepEqual(tweakStylesheets(undefined), []);
+		});
+
+		it('the beacon script adds the tweaks and sends nothing without an experiment', () => {
+			const script = labBeaconScript('next_step_click');
+			assert.match(script, /lab_tweaks/);
+			assert.match(script, /\/_lab\/tweaks\//);
+			assert.match(script, /if \(!e\) return;/);
+		});
 	});
 });

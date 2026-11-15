@@ -11,13 +11,13 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
-import { BetaBinomialDecider, FileLedger, approve, buildInScratch, loadConfig, runIteration, ship, startService } from '@lab/core';
+import { BetaBinomialDecider, FileLedger, approve, buildInScratch, loadConfig, runIteration, ship, startService, verifyTweak } from '@lab/core';
 import type { LabConfig, ScratchBuild, Service } from '@lab/core';
 import { GraftSpecCheck } from '@lab/adapters';
 import { ReplayBuilder, ReplayProposer } from '@lab/agent';
-import { LocalServePublisher, MetricStore, OriginDeployer, StoreMeter, readState, startCollector } from '@lab/deploy';
+import { FileTweakStore, LocalServePublisher, MetricStore, OriginDeployer, StoreMeter, readState, startCollector } from '@lab/deploy';
 import { assignBucket } from '@lab/next';
-import { LocalSandbox } from '@lab/sandbox';
+import { CssInjectingProxy, LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
 
 const example = join(import.meta.dirname, '..', 'nextjs-proxy');
@@ -52,7 +52,7 @@ describe('Next.js proxy (server mode), end to end', { timeout: 900_000 }, () => 
 		config = (await loadConfig(repo)).config!;
 		browser = await chromium.launch();
 		store = new MetricStore({ intervalHours: config.traffic.intervalHours, file: join(host, 'metrics.json') });
-		collector = await startCollector({ root: host, store });
+		collector = await startCollector({ root: host, store, ...(config.tweaks ? { tweaks: config.tweaks, budgets: config.budgets } : {}) });
 		// The site's production deployment: its own server, its proxy pointed at the lab.
 		baselineBuild = await buildInScratch({ dir: repo, commit: 'site' }, config);
 		baseline = await startService(config.site.serve!, { cwd: baselineBuild.work, timeoutMs: 120_000, env: { LAB_URL: collector.url, LAB_CACHE_MS: '200' } });
@@ -145,6 +145,54 @@ describe('Next.js proxy (server mode), end to end', { timeout: 900_000 }, () => 
 		assert.ok(stats.variant.visits >= 1 && stats.baseline.visits >= 1, JSON.stringify(stats));
 		assert.equal(stats.variant.conversions, 1);
 		assert.equal(stats.baseline.conversions, 1);
+	});
+
+	it('verifies a personal tweak on the server app, and a visitor who opts in gets it and leaves the experiment', async () => {
+		// A dark blue heading. (A 3.5rem heading was rejected here: the docs page scrolled sideways at 390px.)
+		const css = 'h1 { color: rgb(11, 61, 145); }';
+		const outcome = await verifyTweak(
+			{
+				config,
+				site: { dir: repo, commit: 'site' },
+				sandbox: new LocalSandbox({ config }),
+				injector: new CssInjectingProxy(),
+				verifier: new BrowserVerifier({ config, siteDir: repo, browser }),
+				evidenceDir: join(host, 'evidence'),
+				specCheck: new GraftSpecCheck(),
+			},
+			{
+				spec: {
+					id: 'tw-00000000000a',
+					intent: 'A dark blue main heading.',
+					acceptance: ['The main heading is visible.'],
+					mount: 'site',
+					permissions: ['style:write'],
+					checks: [{ criterion: 0, page: '.', expect: [{ expect: 'visible', target: { role: 'heading', name: 'A preview environment for every pull request' } }] }],
+				},
+				css,
+			},
+		);
+		assert.equal(outcome.outcome, 'verified', JSON.stringify(outcome.outcome === 'rejected' ? [outcome.diagnostics, outcome.failures] : outcome));
+		if (outcome.outcome !== 'verified') return;
+		await new FileTweakStore(host, config).put(outcome.record);
+
+		const live = readState(host).live!;
+		const visitor = await visit(visitorIn(live.experiment, live.share, 'variant'));
+		assert.equal(visitor.docsInNav, true, 'before opting in, the variant bucket sees the variant');
+		await visitor.page.goto(new URL('/_lab/tweak/tw-00000000000a', baseline.url).href);
+		assert.equal(new URL(visitor.page.url()).pathname, '/');
+		await visitor.page.waitForFunction(() => getComputedStyle(document.querySelector('h1')!).color === 'rgb(11, 61, 145)', null, { timeout: 5000 });
+		const cookies = Object.fromEntries((await visitor.context.cookies()).map((c) => [c.name, c.value]));
+		assert.equal(cookies.lab_tweaks, 'tw-00000000000a');
+		const html = await (await visitor.context.request.get(new URL('/', baseline.url).href)).text();
+		assert.match(html, /<link rel="stylesheet" href="\/_lab\/tweaks\/tw-00000000000a\.css" data-lab-tweak="tw-00000000000a"\/>/, 'the server renders the tweak in <head>, before the first paint');
+		assert.equal(await visitor.page.locator('link[data-lab-tweak]').count(), 1, 'the beacon does not add it twice');
+		assert.equal(cookies.lab_exp, '', 'a tweaked visitor is in no experiment');
+		assert.equal((await visitor.page.locator('nav[aria-label="Main"] a[href="/docs"]').count()) > 0, false, 'and is served the baseline');
+		await visitor.page.goto(new URL('/_lab/tweak/tw-00000000000a?off', baseline.url).href);
+		assert.equal((await visitor.context.cookies()).find((c) => c.name === 'lab_tweaks'), undefined, 'opting out drops the cookie');
+		assert.deepEqual(visitor.failed, []);
+		await visitor.context.close();
 	});
 
 	it('the kill switch sends every visitor to the production build within the proxy cache time', async () => {
