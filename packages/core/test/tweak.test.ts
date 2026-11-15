@@ -83,7 +83,7 @@ describe('checkTweakCss', () => {
 	});
 
 	it('refuses list markers that write text, directly or through a custom property', () => {
-		for (const css of ['li { list-style-type: "FREE "; }', 'li { list-style: "FREE " inside; }', 'li { --m: "FREE"; list-style-type: var(--m); }', '@counter-style free { system: cyclic; symbols: "FREE"; } li { list-style: free; }']) {
+		for (const css of ['li { list-style-type: "FREE "; }', 'li { list-style: "FREE " inside; }', 'li { --m: "FREE"; list-style-type: var(--m); }', '@counter-style free { system: cyclic; symbols: "FREE"; } li { list-style: free; }', 'li { &.active { color: red }list-style-type: "FREE"; }', 'li { &.a { color: red }content: "x" }']) {
 			assert.deepEqual(failing(css), ['static.tweak-css'], css);
 		}
 		assert.deepEqual(failing('li { list-style: square inside; }'), [], 'a keyword marker is style');

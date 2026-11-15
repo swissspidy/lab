@@ -310,7 +310,7 @@ async function main(argv: string[]): Promise<number> {
 		}
 		case 'collect': {
 			const port = Number(values.port ?? 8081);
-			const collector = await startCollector({ root: hostDir, store: store(), port, host: process.env.LAB_HOST ?? '127.0.0.1', ...(process.env.LAB_TOKEN ? { token: process.env.LAB_TOKEN } : {}), ...(config.tweaks ? { tweaks: config.tweaks } : {}) });
+			const collector = await startCollector({ root: hostDir, store: store(), port, host: process.env.LAB_HOST ?? '127.0.0.1', ...(process.env.LAB_TOKEN ? { token: process.env.LAB_TOKEN } : {}), ...(config.tweaks ? { tweaks: config.tweaks, budgets: config.budgets } : {}) });
 			process.stdout.write(`Collector at ${collector.url} (state in ${hostDir})${process.env.LAB_TOKEN ? '' : '. No LAB_TOKEN: remote state writes and metric reads are off'}. Ctrl-C to stop.\n`);
 			await new Promise<void>((done) => process.once('SIGINT', done));
 			await collector.close();

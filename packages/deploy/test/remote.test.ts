@@ -223,6 +223,20 @@ describe('personal tweaks in the collector', () => {
 		}
 	});
 
+	it('refuses to store a tweak over the site’s bundle budget', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
+		const budgets = { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 1 };
+		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: { maxBytes: 65_536 }, budgets });
+		try {
+			const body = JSON.stringify(record({}, `h1 { color: red } /* ${'x'.repeat(2_000)} */`));
+			const res = await fetch(`${collector.url}/tweaks/tw-0123456789ab`, { method: 'PUT', headers: { authorization: 'Bearer secret-token' }, body });
+			assert.equal(res.status, 400, 'within maxBytes but over a 1 KB bundle budget');
+		} finally {
+			await collector.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('has no tweak routes when the site offers none', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
 		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token' });

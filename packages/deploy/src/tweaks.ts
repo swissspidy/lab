@@ -10,10 +10,10 @@ import type { RemoteOptions } from './remote.ts';
 
 export class FileTweakStore implements TweakStore {
 	readonly dir: string;
-	readonly config: Pick<LabConfig, 'tweaks'>;
+	readonly config: Pick<LabConfig, 'tweaks'> & Partial<Pick<LabConfig, 'budgets'>>;
 
 	/** `root` is the deploy state directory; tweaks go in its `tweaks/`. */
-	constructor(root: string, config: Pick<LabConfig, 'tweaks'>) {
+	constructor(root: string, config: Pick<LabConfig, 'tweaks'> & Partial<Pick<LabConfig, 'budgets'>>) {
 		this.dir = join(root, 'tweaks');
 		this.config = config;
 	}

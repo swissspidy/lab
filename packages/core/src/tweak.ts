@@ -86,12 +86,12 @@ const FORBIDDEN_IN_CODE: Array<[RegExp, string]> = [
 	[/@font-face\b/i, '`@font-face` loads a font.'],
 	[/expression\s*\(/i, '`expression()` runs script in old browsers.'],
 	[/javascript\s*:/i, '`javascript:` is a script URL.'],
-	[/(?:^|[;{\s])behavior\s*:/i, '`behavior` attaches script in old browsers.'],
+	[/(?:^|[;{}\s])behavior\s*:/i, '`behavior` attaches script in old browsers.'],
 	[/-moz-binding\b/i, '`-moz-binding` attaches script in old browsers.'],
-	[/(?:^|[;{\s])content\s*:/i, '`content` writes text onto the page: a tweak changes how the site looks, not what it says.'],
+	[/(?:^|[;{}\s])content\s*:/i, '`content` writes text onto the page: a tweak changes how the site looks, not what it says.'],
 	// List markers show a string, or a @counter-style's symbols, as text; strings were blanked to "" and
 	// a custom property could carry one, so any string or var() in a list-style value is refused.
-	[/(?:^|[;{\s])list-style(?:-type)?\s*:[^;}]*(?:""|var\s*\()/i, 'A string or a custom property in `list-style` writes text as list markers: a tweak changes how the site looks, not what it says.'],
+	[/(?:^|[;{}\s])list-style(?:-type)?\s*:[^;}]*(?:""|var\s*\()/i, 'A string or a custom property in `list-style` writes text as list markers: a tweak changes how the site looks, not what it says.'],
 	[/@counter-style/i, '`@counter-style` defines marker symbols, which are text: a tweak changes how the site looks, not what it says.'],
 ];
 

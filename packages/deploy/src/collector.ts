@@ -34,6 +34,8 @@ export interface CollectorOptions {
 	token?: string;
 	/** The site's `tweaks` config. Absent: no tweak routes. */
 	tweaks?: LabConfig['tweaks'];
+	/** The site's budgets: a stored tweak counts against `bundleKbDelta` as well. */
+	budgets?: LabConfig['budgets'];
 }
 
 const TWEAK_PATH = /^\/tweaks\/(tw-[0-9a-f]{12})(\.css|\.json)?$/;
@@ -46,7 +48,7 @@ export async function startCollector(options: CollectorOptions): Promise<{ url: 
 		const wanted = Buffer.from(`Bearer ${options.token}`);
 		return given.length === wanted.length && timingSafeEqual(given, wanted);
 	};
-	const tweaks = options.tweaks ? new FileTweakStore(options.root, { tweaks: options.tweaks }) : null;
+	const tweaks = options.tweaks ? new FileTweakStore(options.root, { tweaks: options.tweaks, ...(options.budgets ? { budgets: options.budgets } : {}) }) : null;
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://collector').pathname;
 		const tweak = TWEAK_PATH.exec(path);

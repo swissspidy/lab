@@ -52,7 +52,7 @@ describe('Next.js proxy (server mode), end to end', { timeout: 900_000 }, () => 
 		config = (await loadConfig(repo)).config!;
 		browser = await chromium.launch();
 		store = new MetricStore({ intervalHours: config.traffic.intervalHours, file: join(host, 'metrics.json') });
-		collector = await startCollector({ root: host, store, ...(config.tweaks ? { tweaks: config.tweaks } : {}) });
+		collector = await startCollector({ root: host, store, ...(config.tweaks ? { tweaks: config.tweaks, budgets: config.budgets } : {}) });
 		// The site's production deployment: its own server, its proxy pointed at the lab.
 		baselineBuild = await buildInScratch({ dir: repo, commit: 'site' }, config);
 		baseline = await startService(config.site.serve!, { cwd: baselineBuild.work, timeoutMs: 120_000, env: { LAB_URL: collector.url, LAB_CACHE_MS: '200' } });
