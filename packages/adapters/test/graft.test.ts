@@ -122,6 +122,12 @@ describe('The website as a Graft surface', () => {
 		// Two routes that still land on one slot (a found 32-bit hash collision) are refused, not merged.
 		assert.equal(pageSlot("X~*$$Y.html"), pageSlot("X(+')~Y.html"));
 		assert.throws(() => websiteHost(config, files, ["X~*$$Y.html", "X(+')~Y.html"]), (e: Error & { code?: string }) => e.code === 'website-slot-collision');
+		// The home page and a directory named `index` are different routes with different slots.
+		assert.match(pageSlot('index/index.html'), /^page\.index--[0-9a-f]{8}$/);
+		const nested = websiteHost(config, files, ['index/index.html']);
+		const withHome = websiteHost(config, files, ['index/index.html', 'index.html']);
+		assert.deepEqual(withHome.slots[pageSlot('index/index.html')], nested.slots[pageSlot('index/index.html')]);
+		assert.equal(withHome.slots['page.index']?.page, 'index.html');
 		// A new page that sorts first renames nothing: every slot keeps its page.
 		const after = websiteHost(config, files, ['docs/一.html', ...pages]);
 		for (const [slot, value] of Object.entries(before.slots)) assert.deepEqual(after.slots[slot], value);

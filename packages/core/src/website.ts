@@ -59,10 +59,13 @@ export const SITE_SLOT = 'site';
 /** A mount slot: `site`, or `page.<route>` with dot-separated segments. */
 export const SLOT = /^(?:site|page(?:\.[a-z][a-z0-9-]*)+)$/;
 
-/** A page's route: `docs.html`, `docs` and `docs/index.html` are all `docs`; the home page is `index`. */
+/**
+ * A page's route: `docs.html`, `docs` and `docs/index.html` are all `docs`.
+ * The home page (`index.html`, `.`) is the empty route, so it never equals a
+ * directory named `index` (`index/index.html` is the route `index`).
+ */
 export function pageRoute(page: string): string {
-	const route = page.replace(/^\.\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html?$/i, '').replace(/(?:^|\/)index$/, '');
-	return route === '' ? 'index' : route;
+	return page.replace(/^\.\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html?$/i, '').replace(/(?:^|\/)index$/, '');
 }
 
 /** A segment used as is: lowercase words joined by single dashes, starting with a letter. */
@@ -74,14 +77,18 @@ const PLAIN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
  * (one route), `docs/intro.html` is `page.docs.intro`.
  *
  * A slot depends on its own page only, so adding or removing other pages
- * never renames it. A segment that is not plain is slugged and gets `--`
+ * never renames it. A segment that is not plain, or is `index` (the home
+ * page's slot), is slugged and gets `--`
  * and the first eight hex digits of its sha256: `About` is
  * `about--<hash>`, `中文` is `p--<hash>`. A plain segment never contains
  * `--`, so it cannot look like a hashed one.
  */
 export function pageSlot(page: string): string {
-	return `page.${pageRoute(page).split('/').map((segment) => {
-		if (PLAIN.test(segment)) return segment;
+	const route = pageRoute(page);
+	if (route === '') return 'page.index';
+	return `page.${route.split('/').map((segment) => {
+		// `index` is the home page's slot, so a segment named `index` is hashed like any other non-plain one.
+		if (PLAIN.test(segment) && segment !== 'index') return segment;
 		const slug = segment.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 		const hash = createHash('sha256').update(segment).digest('hex').slice(0, 8);
 		return `${/^[a-z]/.test(slug) ? slug : `p${slug ? `-${slug}` : ''}`}--${hash}`;
