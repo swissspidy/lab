@@ -100,12 +100,18 @@ export function experimentViews(events: LedgerEvent[]): ExperimentView[] {
 
 const pct = (c: Counts) => (c.visits === 0 ? '–' : `${((100 * c.conversions) / c.visits).toFixed(2)}%`);
 
-function renderDiff(patch: string): string {
+function renderDiff(patch: string, label: string): string {
 	const lines = patch.split('\n').map((line) => {
 		const cls = line.startsWith('+++') || line.startsWith('---') || line.startsWith('diff ') || line.startsWith('index ') ? 'meta' : line.startsWith('@@') ? 'hunk' : line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : '';
 		return `<span${cls ? ` class="${cls}"` : ''}>${escape(line)}</span>`;
 	});
-	return `<pre class="diff">${lines.join('\n')}</pre>`;
+	// Scrollable, so keyboard users can reach it; a region, so it has a name.
+	return `<pre class="diff" tabindex="0" role="region" aria-label="${escape(label)}">${lines.join('\n')}</pre>`;
+}
+
+/** A table in a named, keyboard-scrollable region, so a wide table scrolls on its own instead of the page. */
+function renderTable(id: string, caption: string, headers: string[], rows: string[]): string {
+	return `<div class="table-wrap" tabindex="0" role="region" aria-labelledby="${escape(id)}"><table><caption id="${escape(id)}" class="visually-hidden">${escape(caption)}</caption><thead><tr>${headers.map((h) => `<th scope="col">${escape(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 
 export interface ReportOptions {
@@ -129,7 +135,7 @@ export function renderReport(events: LedgerEvent[], options: ReportOptions = {})
 		});
 		const rows = (v.results.length ? v.results : v.failures).toSorted((a, b) => Number(a.passed) - Number(b.passed)).map((r) => {
 			const shot = r.evidence?.screenshot ? href(r.evidence.screenshot) : null;
-			return `<tr class="${r.passed ? 'ok' : 'bad'}"><td>${escape(r.gate)}</td><td><code>${escape(r.check)}</code></td><td>${r.passed ? '<span class="pass">pass</span>' : '<span class="fail">fail</span>'}</td><td>${escape(r.message)}${shot ? ` <a href="${escape(shot)}">screenshot</a>` : ''}${r.evidence?.console?.length ? `<details><summary>console</summary><pre>${escape(r.evidence.console.join('\n'))}</pre></details>` : ''}${r.evidence?.detail ? `<details><summary>log</summary><pre>${escape(r.evidence.detail)}</pre></details>` : ''}</td></tr>`;
+			return `<tr class="${r.passed ? 'ok' : 'bad'}"><td>${escape(r.gate)}</td><td><code>${escape(r.check)}</code></td><td>${r.passed ? '<span class="pass">pass</span>' : '<span class="fail">fail</span>'}</td><td>${escape(r.message)}${shot ? ` <a href="${escape(shot)}">screenshot</a>` : ''}${r.evidence?.console?.length ? `<details><summary>console</summary><pre tabindex="0" role="region" aria-label="Console output of ${escape(r.check)}">${escape(r.evidence.console.join('\n'))}</pre></details>` : ''}${r.evidence?.detail ? `<details><summary>log</summary><pre tabindex="0" role="region" aria-label="Log of ${escape(r.check)}">${escape(r.evidence.detail)}</pre></details>` : ''}</td></tr>`;
 		});
 		const measured = v.measurements.map(
 			(m) => `<tr><td>${escape(m.day)}</td><td>${escape(pct(m.baseline))} <span class="muted">(${escape(m.baseline.conversions)}/${escape(m.baseline.visits)})</span></td><td>${escape(pct(m.variant))} <span class="muted">(${escape(m.variant.conversions)}/${escape(m.variant.visits)})</span></td><td>${escape(m.probability.toFixed(3))}</td><td>${escape(m.decision.action)}: ${escape(m.decision.reason)}</td></tr>`,
@@ -145,9 +151,9 @@ ${v.outcome !== (OUTCOME[v.state] ?? v.state) ? `<p class="outcome">${escape(v.o
 <dt>Proposed by</dt><dd>${escape(v.source === 'visitors' ? 'visitor requests' : 'the agent')}</dd>
 </dl>
 ${criteria.length ? `<h3>Acceptance criteria</h3><ul>${criteria.join('')}</ul>` : ''}
-${v.patch ? `<details><summary>Diff</summary>${renderDiff(v.patch)}</details>` : ''}
-${rows.length ? `<details${v.state === 'verify_failed' ? ' open' : ''}><summary>Verification: ${v.results.filter((r) => r.passed).length} passed, ${(v.results.length ? v.results : v.failures).filter((r) => !r.passed).length} failed</summary><table><thead><tr><th>Gate</th><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody>${rows.join('')}</tbody></table></details>` : ''}
-${measured.length ? `<h3>Measurements</h3><table><thead><tr><th>Day</th><th>Baseline</th><th>Variant</th><th>P(expected effect)</th><th>Decision</th></tr></thead><tbody>${measured.join('')}</tbody></table>` : ''}
+${v.patch ? `<details><summary>Diff</summary>${renderDiff(v.patch, `Diff of ${v.id}`)}</details>` : ''}
+${rows.length ? `<details${v.state === 'verify_failed' ? ' open' : ''}><summary>Verification: ${v.results.filter((r) => r.passed).length} passed, ${(v.results.length ? v.results : v.failures).filter((r) => !r.passed).length} failed</summary>${renderTable(`${v.id}-checks`, `Verification checks of ${v.id}`, ['Gate', 'Check', 'Result', 'Detail'], rows)}</details>` : ''}
+${measured.length ? `<h3>Measurements</h3>${renderTable(`${v.id}-measurements`, `Daily measurements of ${v.id}`, ['Day', 'Baseline', 'Variant', 'P(expected effect)', 'Decision'], measured)}` : ''}
 <details><summary>Timeline</summary><ol class="timeline">${timeline.join('')}</ol></details>
 </section>`;
 	});
@@ -157,6 +163,7 @@ ${measured.length ? `<h3>Measurements</h3><table><thead><tr><th>Day</th><th>Base
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>${escape(title)}</title>
 <style>
 :root { --ink: #1b1f24; --muted: #5a636e; --line: #d5dae0; --pass: #116329; --fail: #a40e26; --bg: #fff; --code: #f3f4f6; color-scheme: light dark; }
@@ -170,6 +177,8 @@ h1 { margin-bottom: .25rem; } h2 { margin-bottom: 0; } h2 a { color: inherit; }
 .state-kept .badge, .pass { color: var(--pass); } .state-verify_failed .badge, .state-reverted .badge, .state-aborted .badge, .fail { color: var(--fail); }
 .outcome { margin-top: .25rem; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; } dt { color: var(--muted); } dd { margin: 0; }
+.table-wrap { overflow-x: auto; position: relative; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; } th, td { text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); padding: .3rem .5rem; }
 code, pre { font-family: ui-monospace, monospace; } pre { background: var(--code); padding: .5rem; overflow-x: auto; font-size: .85rem; }
 .diff .add { color: var(--pass); } .diff .del { color: var(--fail); } .diff .meta, .diff .hunk { color: var(--muted); }

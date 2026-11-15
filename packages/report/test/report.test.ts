@@ -70,6 +70,23 @@ describe('report', () => {
 		}
 	});
 
+	it('declares its color schemes and names its tables and scrolling regions', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
+		try {
+			const html = renderReport(await ledgerWith(dir, '/nope.png'));
+			assert.ok(html.includes('<meta name="color-scheme" content="light dark">'));
+			assert.equal((html.match(/<table>/g) ?? []).length, 3);
+			assert.equal((html.match(/<caption /g) ?? []).length, 3, 'every table has a caption');
+			assert.ok(!/<th>/.test(html), 'every header cell has a scope');
+			for (const id of ['exp-0001-checks', 'exp-0001-measurements', 'exp-0002-checks']) {
+				assert.ok(html.includes(`<div class="table-wrap" tabindex="0" role="region" aria-labelledby="${id}"><table><caption id="${id}"`), id);
+			}
+			assert.ok(html.includes('<pre class="diff" tabindex="0" role="region" aria-label="Diff of exp-0001">'));
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('finds evidence recorded relative to the site directory', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
 		try {
