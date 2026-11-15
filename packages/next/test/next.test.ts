@@ -194,6 +194,13 @@ describe('@lab/next', () => {
 			assert.equal(((await proxy(request('http://site.test/_lab/tweaks/state.css'))) as Response).status, 404, 'only a tweak id');
 		});
 
+		it('answers 404 when the lab’s stylesheet body fails after its headers', async () => {
+			const { NextResponse } = fakeNext();
+			const failingBody = new ReadableStream({ start: (c) => c.error(new Error('reset')) });
+			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: async () => new Response(failingBody, { status: 200 }) });
+			assert.equal(((await proxy(request(`http://site.test/_lab/tweaks/${TW}.css`))) as Response).status, 404);
+		});
+
 		it('leaves a tweaked visitor out of the experiment: baseline, and no experiment for the beacon', async () => {
 			const { calls, NextResponse } = fakeNext();
 			const proxy = createLabProxy({ NextResponse, lab: 'http://lab.test', fetch: lab() });

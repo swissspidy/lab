@@ -117,9 +117,12 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 		if (url.pathname.startsWith(TWEAK_CSS) && request.method === 'GET') {
 			const id = url.pathname.slice(TWEAK_CSS.length).replace(/\.css$/, '');
 			if (!base || !isTweakId(id)) return new Response(null, { status: 404 });
-			const res = await doFetch(`${base}/tweaks/${id}.css`, { signal: AbortSignal.timeout(1500) }).catch(() => null);
-			if (!res?.ok) return new Response(null, { status: 404 });
-			return new Response(await res.text(), { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } });
+			// The body can fail after the headers arrived: both count as no stylesheet.
+			const css = await doFetch(`${base}/tweaks/${id}.css`, { signal: AbortSignal.timeout(1500) })
+				.then((res) => (res.ok ? res.text() : null))
+				.catch(() => null);
+			if (css === null) return new Response(null, { status: 404 });
+			return new Response(css, { headers: { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } });
 		}
 		if (url.pathname.startsWith(TWEAK_OPT_IN) && request.method === 'GET') {
 			return optIn(url, request.cookies.get(COOKIE_TWEAKS)?.value);

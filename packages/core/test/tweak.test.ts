@@ -82,6 +82,21 @@ describe('checkTweakCss', () => {
 		assert.deepEqual(failing('h1 { font-family: "</style>"; }'), ['static.tweak-css']);
 	});
 
+	it('refuses list markers that write text, directly or through a custom property', () => {
+		for (const css of ['li { list-style-type: "FREE "; }', 'li { list-style: "FREE " inside; }', 'li { --m: "FREE"; list-style-type: var(--m); }', '@counter-style free { system: cyclic; symbols: "FREE"; } li { list-style: free; }']) {
+			assert.deepEqual(failing(css), ['static.tweak-css'], css);
+		}
+		assert.deepEqual(failing('li { list-style: square inside; }'), [], 'a keyword marker is style');
+	});
+
+	it('counts a tweak against the site’s bundle budget too', () => {
+		const css = `p { color: red } /* ${'x'.repeat(30_000)} */`;
+		const size = (budgets?: { bundleKbDelta: number }) =>
+			checkTweakCss(css, { tweaks: { maxBytes: 65_536 }, ...(budgets ? { budgets: { ...config.budgets, ...budgets } } : {}) }).find((r) => r.check === 'static.tweak-size')!.passed;
+		assert.equal(size(), true, 'within maxBytes alone');
+		assert.equal(size({ bundleKbDelta: 20 }), false, 'over a 20 KB bundle budget');
+	});
+
 	it('refuses an empty stylesheet and one over the size limit', () => {
 		assert.deepEqual(failing('/* nothing */'), ['static.tweak-css']);
 		assert.deepEqual(failing(`a { color: red; ${'b { color: blue } '.repeat(10)} }`, 50), ['static.tweak-size']);

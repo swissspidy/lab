@@ -89,6 +89,10 @@ const FORBIDDEN_IN_CODE: Array<[RegExp, string]> = [
 	[/(?:^|[;{\s])behavior\s*:/i, '`behavior` attaches script in old browsers.'],
 	[/-moz-binding\b/i, '`-moz-binding` attaches script in old browsers.'],
 	[/(?:^|[;{\s])content\s*:/i, '`content` writes text onto the page: a tweak changes how the site looks, not what it says.'],
+	// List markers show a string, or a @counter-style's symbols, as text; strings were blanked to "" and
+	// a custom property could carry one, so any string or var() in a list-style value is refused.
+	[/(?:^|[;{\s])list-style(?:-type)?\s*:[^;}]*(?:""|var\s*\()/i, 'A string or a custom property in `list-style` writes text as list markers: a tweak changes how the site looks, not what it says.'],
+	[/@counter-style/i, '`@counter-style` defines marker symbols, which are text: a tweak changes how the site looks, not what it says.'],
 ];
 
 /**
@@ -96,8 +100,10 @@ const FORBIDDEN_IN_CODE: Array<[RegExp, string]> = [
  * request, runs script, writes text or hides any of those behind escapes,
  * comments or strings.
  */
-export function checkTweakCss(css: string, config: Pick<LabConfig, 'tweaks'>): CheckResult[] {
-	const max = config.tweaks?.maxBytes ?? DEFAULT_TWEAK_BYTES;
+export function checkTweakCss(css: string, config: Pick<LabConfig, 'tweaks'> & Partial<Pick<LabConfig, 'budgets'>>): CheckResult[] {
+	// A tweak adds its stylesheet to every page, so it also counts against the site's bundle budget.
+	const budget = config.budgets ? config.budgets.bundleKbDelta * 1024 : Number.POSITIVE_INFINITY;
+	const max = Math.min(config.tweaks?.maxBytes ?? DEFAULT_TWEAK_BYTES, budget);
 	const bytes = Buffer.byteLength(css, 'utf8');
 	const problems = FORBIDDEN_ANYWHERE.filter(([pattern]) => pattern.test(css)).map(([, why]) => why);
 	const split = splitCss(css);
@@ -209,7 +215,7 @@ export async function verifyTweak(deps: TweakDeps, tweak: Tweak): Promise<TweakO
 }
 
 /** Validates a stored tweak record from outside (a request body, a file). Null when malformed. */
-export function parseTweakRecord(value: unknown, config: Pick<LabConfig, 'tweaks'>): TweakRecord | null {
+export function parseTweakRecord(value: unknown, config: Pick<LabConfig, 'tweaks'> & Partial<Pick<LabConfig, 'budgets'>>): TweakRecord | null {
 	if (!isObject(value)) return null;
 	const { spec } = validateTweakSpec(value.spec);
 	if (!spec || typeof value.css !== 'string' || typeof value.verifiedAt !== 'string' || Number.isNaN(Date.parse(value.verifiedAt))) return null;
