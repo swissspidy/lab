@@ -128,6 +128,16 @@ describe('The website as a Graft surface', () => {
 		const withHome = websiteHost(config, files, ['index/index.html', 'index.html']);
 		assert.deepEqual(withHome.slots[pageSlot('index/index.html')], nested.slots[pageSlot('index/index.html')]);
 		assert.equal(withHome.slots['page.index']?.page, 'index.html');
+		// Only a leading `./` is stripped: a dotfile page is its own route.
+		assert.equal(pageSlot('./docs.html'), 'page.docs');
+		assert.notEqual(pageSlot('.well-known.html'), pageSlot('well-known.html'));
+		const plain = websiteHost(config, files, ['well-known.html']);
+		const dotted = websiteHost(config, files, ['well-known.html', '.well-known.html']);
+		assert.deepEqual(dotted.slots['page.well-known'], plain.slots['page.well-known']);
+		assert.equal(Object.keys(dotted.slots).length, 3);
+		// Only `.html` is the page suffix the verifier serves: other spellings are other files.
+		assert.notEqual(pageSlot('docs.htm'), pageSlot('docs.html'));
+		assert.notEqual(pageSlot('docs.HTML'), pageSlot('docs.html'));
 		// A new page that sorts first renames nothing: every slot keeps its page.
 		const after = websiteHost(config, files, ['docs/一.html', ...pages]);
 		for (const [slot, value] of Object.entries(before.slots)) assert.deepEqual(after.slots[slot], value);

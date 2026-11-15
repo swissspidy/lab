@@ -65,7 +65,8 @@ export const SLOT = /^(?:site|page(?:\.[a-z][a-z0-9-]*)+)$/;
  * directory named `index` (`index/index.html` is the route `index`).
  */
 export function pageRoute(page: string): string {
-	return page.replace(/^\.\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html?$/i, '').replace(/(?:^|\/)index$/, '');
+	if (page === '.' || page === './') return '';
+	return page.replace(/^(?:\.\/)+/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html$/, '').replace(/(?:^|\/)index$/, '');
 }
 
 /** A segment used as is: lowercase words joined by single dashes, starting with a letter. */
