@@ -7,11 +7,11 @@ import type { CheckEvidence, CheckResult, Gate, LabConfig, RunningSite, Verifier
 import { sitePages } from '@lab/core';
 import { runAcceptanceCheck } from './acceptance.ts';
 import { loadInvariants, runInvariant } from './invariants.ts';
-import type { Invariant } from './invariants.ts';
+import type { Invariant, InvariantKind } from './invariants.ts';
 import { measurePage, newContext, screenshot } from './measure.ts';
 import type { PageMeasurement } from './measure.ts';
 
-export type { Invariant, InvariantContext } from './invariants.ts';
+export type { Invariant, InvariantContext, InvariantKind } from './invariants.ts';
 export { loadInvariants } from './invariants.ts';
 
 const axeSource = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -23,6 +23,8 @@ export interface BrowserVerifierOptions {
 	/** Reuse a browser. When absent, the verifier launches and closes its own. */
 	browser?: Browser;
 	concurrency?: number;
+	/** Kinds of invariant module besides `{ id, description, run }`, such as Assay invariants. */
+	invariantKinds?: readonly InvariantKind[];
 }
 
 type Viewport = { width: number; height: number };
@@ -73,12 +75,14 @@ export class BrowserVerifier implements Verifier {
 	readonly siteDir: string;
 	readonly concurrency: number;
 	private readonly sharedBrowser: Browser | undefined;
+	private readonly invariantKinds: readonly InvariantKind[];
 
 	constructor(options: BrowserVerifierOptions) {
 		this.config = options.config;
 		this.siteDir = options.siteDir;
 		this.sharedBrowser = options.browser;
 		this.concurrency = options.concurrency ?? 4;
+		this.invariantKinds = options.invariantKinds ?? [];
 	}
 
 	async verify(input: VerifyInput): Promise<VerifyReport> {
@@ -174,7 +178,7 @@ export class BrowserVerifier implements Verifier {
 
 	private async run(browser: Browser, input: VerifyInput): Promise<VerifyReport> {
 		const { baseline, variant, spec, evidenceDir } = input;
-		const invariants = await loadInvariants(resolve(this.siteDir, this.config.invariants));
+		const invariants = await loadInvariants(resolve(this.siteDir, this.config.invariants), this.invariantKinds);
 		const [base, varRun] = [
 			await this.suite(browser, baseline, invariants, 'baseline', evidenceDir),
 			await this.suite(browser, variant, invariants, 'variant', evidenceDir),

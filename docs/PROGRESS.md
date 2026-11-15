@@ -1,5 +1,54 @@
 # Progress
 
+## After M5: Assay invariants (2026-11-15)
+
+Pascal asked why the invariants gate does not use Assay. The inventory had
+put it off because Assay was not published. It now comes from a pinned git
+commit, and it needed one change to install that way.
+
+**Built**
+
+- Assay: `prepare` builds `dist` (it was `prepack`), so a git install works.
+  On its branch `claude/nice-goodall-msc6fx`, commit `7c04784`.
+- `@lab/adapters`: Assay invariants. A module default-exports plain data and
+  steps (`AssayInvariantSpec`): the task, the outcome in words, the check set's
+  file name, a step that does the task, and named negative runs. It needs only
+  a type import, so it loads from a site without the lab installed.
+  `assayInvariant` turns it into a runnable invariant: it refuses a check set
+  that is missing, invalid, unlocked or edited since it was locked, attaches
+  Assay's network recorder, does the task, and requires `success` from the
+  locked checks (abstain fails).
+- `compileInvariant`: captures the task and each negative on the baseline,
+  mines checks with Assay (`mine-only`, `deterministic`: no model), refuses
+  checks that do not separate the runs (`invariant-compile-failed`) or that
+  fail Assay's stress test (`invariant-stress-failed`), and locks them.
+- `@lab/verify`: `loadInvariants` and `BrowserVerifier` take invariant kinds
+  (`invariantKinds`), so the verifier stays free of Assay. An Assay module
+  loaded without the kind is refused with a message that says how to fix it.
+- CLI: `lab invariants compile [dir]`; `lab doctor` reports
+  `invariant-checks-missing`, `invariant-checks-invalid` and
+  `invariant-lock-broken`.
+- The fixture site's `signup-submits` is an Assay invariant now; the
+  rejection of an invalid address it also checked is `signup-rejects-invalid`.
+
+**Verified**
+
+- `npm run check`: 194 tests. New: the committed check set is what compiling
+  the baseline gives; it passes there and fails a site that confirms the
+  wrong address; outcomes no run shows do not compile; every lock problem
+  has its code, also from `lab doctor`; the loader's kinds. The breakage
+  loop still names `invariants.signup-submits` for the hidden button.
+- Stress test of the compiled set: 8 of 8 valid variants accepted, 1 of 1
+  breakage rejected.
+
+**Not verified**
+
+- The lock is not signed. It proves the check set was not changed after it
+  was locked, and `lab/` is outside every variant's reach; who locked it is
+  only as true as the committer.
+- Mining wants the expected text quoted as "The page shows \"…\"". Other
+  phrasings did not mine; the compile error says so.
+
 ## After M5: API design review (2026-11-15)
 
 A read of every package's public surface for contracts that mislead,

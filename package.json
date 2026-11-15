@@ -26,5 +26,8 @@
 		"oxlint": "^1.93.0",
 		"playwright": "^1.63.0",
 		"typescript": "^7.0.2"
+	},
+	"overrides": {
+		"@playwright/test": "1.63.0"
 	}
 }

@@ -1,18 +1,27 @@
-import type { Invariant } from '@lab/verify';
+// An Assay invariant: the task and its outcome in words, with checks mined
+// from the baseline and locked in signup-submits.checks.json. After changing
+// the task, run `lab invariants compile` and review the diff.
+import type { AssayInvariantSpec, AssayStepContext } from '@lab/adapters';
+
+const subscribe = async ({ page, url }: AssayStepContext, address: string, submit = true) => {
+	await page.goto(new URL('index.html', url).href);
+	await page.getByLabel('Email address').fill(address);
+	if (submit) await page.getByRole('button', { name: 'Subscribe' }).click();
+};
 
 export default {
 	id: 'signup-submits',
-	description: 'The signup form accepts an email address and confirms it, and rejects an invalid one',
-	async run({ page, url, ok }) {
-		await page.goto(new URL('index.html', url).href);
-		const email = page.getByLabel('Email address');
-		const submit = page.getByRole('button', { name: 'Subscribe' });
-		await email.fill('not-an-email');
-		await submit.click();
-		ok(((await page.getByRole('status').textContent()) ?? '').includes('valid email'), 'an invalid address is not rejected');
-		await email.fill('reader@example.com');
-		await submit.click();
-		const status = (await page.getByRole('status').textContent()) ?? '';
-		ok(status.startsWith('Thanks.') && status.includes('reader@example.com'), `the confirmation reads “${status}”`);
+	description: 'The signup form subscribes an email address and confirms it',
+	assay: {
+		task: {
+			instruction: 'Subscribe reader@example.com to the release notes with the signup form.',
+			outcomes: '- The page shows "Thanks. We will send release notes to reader@example.com."',
+		},
+		checks: 'signup-submits.checks.json',
+		act: (ctx) => subscribe(ctx, 'reader@example.com'),
+		negatives: {
+			'not-submitted': (ctx) => subscribe(ctx, 'reader@example.com', false),
+			'invalid-address': (ctx) => subscribe(ctx, 'not-an-email'),
+		},
 	},
-} satisfies Invariant;
+} satisfies AssayInvariantSpec;

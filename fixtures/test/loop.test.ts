@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { FileLedger, checkLedger, loadConfig, runIteration } from '@lab/core';
 import type { IterationResult, LabConfig } from '@lab/core';
-import { GraftSpecCheck } from '@lab/adapters';
+import { GraftSpecCheck, assayInvariant } from '@lab/adapters';
 import { ReplayBuilder, ReplayProposer } from '@lab/agent';
 import { LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
@@ -47,7 +47,7 @@ describe('dry loop (M1)', { concurrency: 3 }, () => {
 			proposer: new ReplayProposer(dir),
 			builder: new ReplayBuilder(dir),
 			sandbox: new LocalSandbox({ config, scratch }),
-			verifier: new BrowserVerifier({ config, siteDir: site, browser }),
+			verifier: new BrowserVerifier({ config, siteDir: site, browser, invariantKinds: [assayInvariant] }),
 			specCheck: new GraftSpecCheck(),
 			evidenceDir: join(scratch, 'evidence'),
 		});

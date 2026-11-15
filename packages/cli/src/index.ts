@@ -22,8 +22,8 @@ import { AnthropicProvider, ModelBuilder, ModelProposer, ReplayBuilder, ReplayPr
 import { CommandPublisher, FileState, MetricStore, OriginDeployer, ReferenceDeployer, RemoteMeter, RemoteState, StoreMeter, startCollector, startEdgeServer } from '@lab/deploy';
 import type { StateStore } from '@lab/deploy';
 import { LocalSandbox } from '@lab/sandbox';
-import { BrowserVerifier } from '@lab/verify';
-import { GraftSpecCheck, GraftSpecProposer, recordingGraftSpecs } from '@lab/adapters';
+import { BrowserVerifier, loadInvariants } from '@lab/verify';
+import { GraftSpecCheck, GraftSpecProposer, assayInvariant, checkInvariantLock, compileInvariant, isAssayInvariant, recordingGraftSpecs, writeCompiledInvariant } from '@lab/adapters';
 import { writeReport } from '@lab/report';
 import { existsSync } from 'node:fs';
 
@@ -32,7 +32,11 @@ const USAGE = `Usage: lab <command> [dir] [options]
 [dir] is the site directory with lab.config.ts. Default: the current directory.
 
 Commands:
-  doctor [dir]              Check the config and the ledger.
+  doctor [dir]              Check the config, the ledger and the locks of
+                            Assay invariants.
+  invariants compile [dir]  Compile every Assay invariant against the
+                            baseline, stress-test and lock its checks, and
+                            write them next to it. Review the diff and commit.
   run --dry [dir]           One iteration, from Propose to Verify. Ships nothing.
   run [dir]                 One scheduled step: measure the live experiment, or
                             ship an approved one, or start a new iteration.
@@ -56,7 +60,8 @@ Options:
   --evidence <d>     Default: <dir>/lab/evidence.
   --host <d>         The reference host's state. Default: <dir>/.lab/host.
   --port <n>         For serve. Default 8080.
-  --by <name>        For approve: who approved. Default: $USER.
+  --by <name>        For approve and invariants compile: who approved or
+                     locked. Default: $USER.
   --json             Print results as JSON.
   -h, --help         Show this help.
 
@@ -113,7 +118,7 @@ async function main(argv: string[]): Promise<number> {
 		process.stdout.write(`${USAGE}\n`);
 		return command || values.help ? 0 : 64;
 	}
-	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect'];
+	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect', 'invariants'];
 	if (!known.includes(command)) {
 		process.stderr.write(`Unknown command \`${command}\`.\n\n${USAGE}\n`);
 		return 64;
@@ -124,7 +129,25 @@ async function main(argv: string[]): Promise<number> {
 		return 64;
 	}
 
+	if (command === 'invariants' && rest.shift() !== 'compile') {
+		process.stderr.write('Usage: lab invariants compile [dir]\n');
+		return 64;
+	}
+
 	const report = await doctor(rest[0] ?? '.');
+	if (command === 'doctor' && report.config) {
+		// Assay invariants carry a locked check set; an unlocked or edited one fails Verify.
+		try {
+			for (const inv of await loadInvariants(resolve(report.siteDir, report.config.invariants), [assayInvariant])) {
+				const problem = isAssayInvariant(inv) ? checkInvariantLock(inv) : null;
+				if (problem) report.diagnostics.push({ severity: 'error', code: problem.code, path: `invariants.${inv.id}`, message: problem.message });
+			}
+		} catch (error) {
+			const code = (error as { code?: unknown }).code;
+			report.diagnostics.push({ severity: 'error', code: typeof code === 'string' ? code : 'invariant-invalid', path: 'invariants', message: (error as Error).message });
+		}
+		report.ok = !report.diagnostics.some((d) => d.severity === 'error');
+	}
 	if (command === 'doctor') {
 		if (values.json) {
 			process.stdout.write(`${JSON.stringify(report, null, '\t')}\n`);
@@ -197,7 +220,7 @@ async function main(argv: string[]): Promise<number> {
 					: recordingGraftSpecs(new ModelProposer({ provider: provider!, config }), resolve(siteDir, 'lab', 'specs')),
 				builder: experiment ? new ReplayBuilder(experiment) : new ModelBuilder({ provider: provider!, config }),
 				sandbox: new LocalSandbox({ config }),
-				verifier: new BrowserVerifier({ config, siteDir }),
+				verifier: new BrowserVerifier({ config, siteDir, invariantKinds: [assayInvariant] }),
 				specCheck: new GraftSpecCheck(),
 				evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')),
 			});
@@ -222,6 +245,27 @@ async function main(argv: string[]): Promise<number> {
 			if (values.json) process.stdout.write(`${JSON.stringify(results.length === 1 ? results[0] : results, null, '\t')}\n`);
 			const last = results.at(-1)!;
 			return last.outcome === 'verify_passed' ? 0 : last.outcome === 'verify_failed' ? 1 : 2;
+		}
+		case 'invariants': {
+			const assay = (await loadInvariants(resolve(siteDir, config.invariants), [assayInvariant])).filter(isAssayInvariant);
+			if (assay.length === 0) {
+				process.stdout.write(`No Assay invariants in ${config.invariants}.\n`);
+				return 0;
+			}
+			const baseline = await new LocalSandbox({ config }).start(site);
+			try {
+				for (const inv of assay) {
+					const compiled = await compileInvariant(inv, { url: baseline.url, viewport: config.viewports[0]!, by: values.by ?? process.env.USER ?? 'unknown' });
+					const file = writeCompiledInvariant(inv, compiled);
+					const { rates } = compiled.stress;
+					process.stdout.write(
+						`${inv.id}: ${compiled.checkSet.checks.length} check(s), locked. Stress: ${rates.variantsAccepted}/${rates.variantsTotal} variants accepted, ${rates.mutantsRejected}/${rates.mutantsTotal} breakages rejected. Wrote ${file}\n`,
+					);
+				}
+			} finally {
+				await baseline.stop();
+			}
+			return 0;
 		}
 		case 'approve': {
 			const event = await approve({ ledger, site }, approveId!, values.by ?? process.env.USER ?? 'unknown');

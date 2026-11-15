@@ -26,7 +26,15 @@ export interface Invariant {
 
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 
-export async function loadInvariants(dir: string): Promise<Invariant[]> {
+/**
+ * Another kind of invariant module, such as an Assay invariant (from
+ * @lab/adapters): turns a module's default export into an invariant, or
+ * returns null when the export is not of its kind. It throws when the export
+ * is of its kind but invalid.
+ */
+export type InvariantKind = (value: unknown, file: string) => Invariant | null;
+
+export async function loadInvariants(dir: string, kinds: readonly InvariantKind[] = []): Promise<Invariant[]> {
 	const absolute = resolve(dir);
 	if (!existsSync(absolute)) return [];
 	const files = readdirSync(absolute)
@@ -35,10 +43,22 @@ export async function loadInvariants(dir: string): Promise<Invariant[]> {
 	const invariants: Invariant[] = [];
 	const seen = new Set<string>();
 	for (const file of files) {
-		const mod = (await import(pathToFileURL(join(absolute, file)).href)) as { default?: unknown };
-		const inv = mod.default as Partial<Invariant> | undefined;
+		const path = join(absolute, file);
+		const mod = (await import(pathToFileURL(path).href)) as { default?: unknown };
+		let inv = mod.default as Partial<Invariant> | undefined;
+		for (const kind of kinds) {
+			const made = kind(mod.default, path);
+			if (made) {
+				inv = made;
+				break;
+			}
+		}
 		if (!inv || typeof inv.id !== 'string' || !ID.test(inv.id) || typeof inv.run !== 'function' || typeof inv.description !== 'string') {
-			throw new StageError('invariant-invalid', `${file} must default-export { id, description, run }.`);
+			const assay = typeof inv === 'object' && inv !== null && 'assay' in inv;
+			throw new StageError(
+				'invariant-invalid',
+				assay ? `${file} is an Assay invariant, but this verifier was not given the Assay kind. Pass \`invariantKinds: [assayInvariant]\` from @lab/adapters.` : `${file} must default-export { id, description, run }.`,
+			);
 		}
 		if (seen.has(inv.id)) throw new StageError('invariant-duplicate', `Two invariants have the id ${inv.id}.`);
 		seen.add(inv.id);

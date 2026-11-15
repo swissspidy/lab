@@ -1,0 +1,58 @@
+{
+	"schema": "assay.checks/v1",
+	"id": "signup-submits",
+	"version": "1",
+	"task": {
+		"instruction": "Subscribe reader@example.com to the release notes with the signup form.",
+		"outcomes": "- The page shows \"Thanks. We will send release notes to reader@example.com.\""
+	},
+	"requirements": [
+		{
+			"id": "R1",
+			"kind": "hard",
+			"text": "The page shows \"Thanks. We will send release notes to reader@example.com.\"",
+			"source": {
+				"field": "outcomes",
+				"quote": "The page shows \"Thanks. We will send release notes to reader@example.com.\""
+			}
+		}
+	],
+	"checks": [
+		{
+			"id": "R1-mined-3",
+			"requirement": "R1",
+			"description": "Mined: the page contains at least 1 status with text containing \"Thanks. We will send release notes to reader@example.com\" (any case).",
+			"assert": {
+				"kind": "contains",
+				"match": {
+					"role": "status",
+					"text": {
+						"contains": "Thanks. We will send release notes to reader@example.com",
+						"ignoreCase": true
+					}
+				}
+			}
+		}
+	],
+	"compiled": {
+		"compiler": "assay/0.1.0",
+		"model": "none",
+		"modelsUsed": [],
+		"at": "2026-11-15T11:08:31.998Z",
+		"discovery": "mined"
+	},
+	"locked": {
+		"by": "site owner",
+		"at": "2026-11-15T11:08:32.000Z",
+		"content": "sha256:8f4db90d18439acdc8a96879b3b5e69179e599183e204e68a665d26972bb61dd",
+		"items": {
+			"id": "sha256:330e6490491f61cadb8e06519386e4e013cba11160d874b66cc3c02c491e5017",
+			"version": "sha256:391552c099c101b131feaf24c5795a6a15bc8ec82015424e0d2b4274a369a0bf",
+			"task": "sha256:f7a4c1a477b7083af2018850e55237d36f19feea93cb6f241c96c7dcb5dc9f5c",
+			"compiled": "sha256:ab6acb4a2dcf3f5cbbed6ba108688bb3e4af92863cfe3869c9cbb7399045bfcd",
+			"requirement:R1": "sha256:5a87cd67a0ee159d38ca885b3b222f732edc569ae13531176b9ce35f74dd1fec",
+			"check:R1-mined-3": "sha256:aafa05d8fbb404497d436aa728ce18086afbd55faf388e4743944f89a426f5da"
+		},
+		"digest": "sha256:256168594491275dcc50ca1927d028bb67e68ad1c547bbe480480f093183eed0"
+	}
+}
