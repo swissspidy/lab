@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { BetaBinomialDecider, FileLedger, approve, buildInScratch, loadConfig, runIteration, ship, startService } from '@lab/core';
 import type { LabConfig, ScratchBuild, Service } from '@lab/core';
+import { GraftSpecCheck } from '@lab/adapters';
 import { ReplayBuilder, ReplayProposer } from '@lab/agent';
 import { LocalServePublisher, MetricStore, OriginDeployer, StoreMeter, readState, startCollector } from '@lab/deploy';
 import { assignBucket } from '@lab/next';
@@ -99,6 +100,7 @@ describe('Next.js proxy (server mode), end to end', { timeout: 900_000 }, () => 
 			builder: new ReplayBuilder(dir),
 			sandbox: new LocalSandbox({ config }),
 			verifier: new BrowserVerifier({ config, siteDir: repo, browser }),
+			specCheck: new GraftSpecCheck(),
 			evidenceDir: join(host, 'evidence'),
 		});
 		assert.equal(iteration.outcome, 'verify_passed', iteration.failures.map((f) => `${f.check}: ${f.message}`).join('\n'));

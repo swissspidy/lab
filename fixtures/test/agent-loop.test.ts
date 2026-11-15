@@ -12,6 +12,7 @@ import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { FileLedger, SETTLED, checkLedger, effectiveDeny, experimentStates, intentKey, loadConfig, matchesAny, parsePatch, runIteration, sha256 } from '@lab/core';
 import type { Builder, IterationResult, LabConfig } from '@lab/core';
+import { GraftSpecCheck } from '@lab/adapters';
 import { ModelBuilder, ModelProposer, ScriptedProvider } from '@lab/agent';
 import { LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
@@ -21,7 +22,7 @@ const REVERTED_INTENT = 'Move the install section into the hero, above the illus
 
 const json = (value: unknown) => `Here is my answer.\n\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\``;
 const proposal = (intent: string, acceptance: string[], checks: unknown[], touches: string[] = []) =>
-	json({ hypothesis: `Hypothesis for: ${intent}`, intent, acceptance, expectedEffect: 'next_step_click up', touches, checks });
+	json({ hypothesis: `Hypothesis for: ${intent}`, intent, acceptance, expectedEffect: 'next_step_click up', touches, mount: 'site', permissions: ['markup:write', 'style:write'], checks });
 const edits = (...list: Array<{ path: string; search: string; replace: string }>) => json({ edits: list });
 
 const NAV = { css: 'nav[aria-label="Main"] a[href="docs.html"]' };
@@ -120,6 +121,7 @@ describe('model-backed loop (M2)', () => {
 					builder,
 					sandbox: new LocalSandbox({ config, scratch }),
 					verifier: new BrowserVerifier({ config, siteDir: site, browser }),
+					specCheck: new GraftSpecCheck(),
 					evidenceDir: join(scratch, 'evidence'),
 				}),
 			);

@@ -108,7 +108,7 @@ describe('ModelBuilder and siteFiles with symlinks and bad edits', () => {
 					JSON.stringify({ edits: [{ path: 'src/a.html', search: '<h1>A</h1>', replace: '<h1>B</h1>' }] }),
 				],
 			});
-			const spec = { id: 'exp-0001', hypothesis: 'h', intent: 'i', acceptance: ['a'], expectedEffect: 'm up', touches: [], source: 'agent' as const, checks: [] };
+			const spec = { id: 'exp-0001', hypothesis: 'h', intent: 'i', acceptance: ['a'], expectedEffect: 'm up', touches: [], mount: 'page.index', permissions: ['markup:write'], source: 'agent' as const, checks: [] };
 			const variant = await new ModelBuilder({ provider, config }).build(spec, { dir: root, commit: 'c' });
 			assert.match(variant.patch, /\+<h1>B<\/h1>/);
 			assert.equal(readFileSync(join(root, 'lab', 'invariants', 'x.ts'), 'utf8'), "const price = 'CHF 19';\n", 'the invariant behind the symlink is untouched');

@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
-import { StageError, effectiveDeny, hashPatch, matchesAny, validateSpec } from '@lab/core';
+import { StageError, WEBSITE_SCOPES, effectiveDeny, hashPatch, matchesAny, scopeOfPath, validateSpec } from '@lab/core';
 import type { Builder, ExperimentSpec, LabConfig, Observation, Proposer, RepoRef, Variant } from '@lab/core';
 import { extractJson, renderFiles, siteFiles, summarizeHistory } from './context.ts';
 import type { ModelProvider } from './provider.ts';
@@ -38,13 +38,22 @@ Assertions: { "expect": "visible" | "hidden" | "in-viewport", "target" } |
 { "expect": "attribute", "target", "name", "equals" } | { "expect": "clipboard", "equals" } |
 { "expect": "url", "endsWith" }.
 
+Mount: where the change shows. "site" for shared parts (navigation, layout,
+global styles), or the page's slot: "page.index" for index.html, "page.docs"
+for docs.html or docs/index.html, "page.docs.intro" for docs/intro.html.
+
+Permissions: the kinds of files the change touches, and no others. The build
+may only change files of these kinds:
+${Object.entries(WEBSITE_SCOPES).map(([scope, s]) => `- ${scope}: ${s.description}`).join('\n')}
+
 Answer with one JSON object in a \`\`\`json block:
-{ "hypothesis", "intent", "acceptance": [..], "expectedEffect": "<metric> up|down", "touches": [..], "checks": [..] }`;
+{ "hypothesis", "intent", "acceptance": [..], "expectedEffect": "<metric> up|down", "touches": [..], "mount": "site" | "page.<route>", "permissions": [..], "checks": [..] }`;
 
 const BUILD_SYSTEM = `You implement one experiment spec as edits to a website's source files.
 
 Rules:
-- Edit only files marked editable="true". Keep the change as small as the spec allows.
+- Edit only files marked editable="true", and only files of a kind the
+  spec's permissions cover. Keep the change as small as the spec allows.
 - Do exactly what the spec's intent says. Do not change numbers, prices,
   names, links, forms or scripts unless the spec says so.
 - Each edit replaces one exact, unique snippet of a file: "search" must
@@ -152,7 +161,7 @@ export class ModelBuilder implements Builder {
 	}
 
 	/** Applies edits to a scratch copy and returns the diff, or why the edits were refused. */
-	private apply(repo: RepoRef, edits: unknown): { patch: string } | { problems: string[] } {
+	private apply(repo: RepoRef, edits: unknown, permissions: readonly string[]): { patch: string } | { problems: string[] } {
 		if (!Array.isArray(edits) || edits.length === 0) return { problems: ['`edits` must be a non-empty list.'] };
 		const deny = effectiveDeny(this.config);
 		const problems: string[] = [];
@@ -168,6 +177,10 @@ export class ModelBuilder implements Builder {
 				continue;
 			}
 			if (!matchesAny(path, this.config.allow) || matchesAny(path, deny)) problems.push(`Edit ${i}: ${path} is not editable.`);
+			else {
+				const scope = scopeOfPath(path);
+				if (!scope || !permissions.includes(scope)) problems.push(`Edit ${i}: ${path} needs ${scope ?? 'a scope no spec can have'}, which the spec's permissions (${permissions.join(', ')}) do not include.`);
+			}
 			const replacing = typeof edit.search === 'string' && typeof edit.replace === 'string';
 			const creating = typeof edit.content === 'string' && edit.search === undefined;
 			if (!replacing && !creating) problems.push(`Edit ${i}: give "search" and "replace", or "content".`);
@@ -225,7 +238,12 @@ export class ModelBuilder implements Builder {
 	}
 
 	async build(spec: ExperimentSpec, repo: RepoRef): Promise<Variant> {
+		// Only files the spec's permissions cover are shown as editable.
 		const files = siteFiles(repo.dir, this.config);
+		for (const f of files) {
+			const scope = scopeOfPath(f.path);
+			f.editable &&= scope !== null && spec.permissions.includes(scope);
+		}
 		const base = `Experiment spec:\n${JSON.stringify(spec, null, 2)}\n\nSite files:\n${renderFiles(files)}`;
 		let feedback = '';
 		for (let attempt = 1; attempt <= this.attempts; attempt++) {
@@ -237,7 +255,7 @@ export class ModelBuilder implements Builder {
 				feedback = `\n\nYour last answer could not be read: ${error instanceof Error ? error.message : String(error)}`;
 				continue;
 			}
-			const result = this.apply(repo, edits);
+			const result = this.apply(repo, edits, spec.permissions);
 			if ('patch' in result) return { experiment: spec.id, base: repo, patch: result.patch, patchHash: hashPatch(result.patch) };
 			feedback = `\n\nYour last edits were refused:\n${result.problems.map((p) => `- ${p}`).join('\n')}\nWrite the edits again, fixing these.`;
 		}

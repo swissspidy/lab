@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { BetaBinomialDecider, FileLedger, LEDGER_FILE, approve, autonomyEntry, experimentStates, gitPromote, kill, loadConfig, siteCommit, tick, validateConfig } from '@lab/core';
 import type { LabConfig, LedgerEvent, TickResult } from '@lab/core';
+import { GraftSpecCheck } from '@lab/adapters';
 import { ReplayBuilder, ReplayProposer } from '@lab/agent';
 import { MetricStore, ReferenceDeployer, StoreMeter, startEdgeServer } from '@lab/deploy';
 import { LocalSandbox } from '@lab/sandbox';
@@ -142,9 +143,14 @@ export async function runNextLoop(options: RunOptions = {}): Promise<RunResult> 
 
 	// A synthetic visitor: one page view over HTTP, beacons as the page would send them.
 	const cssCache = new Map<string, string>();
+	// Reproducible traffic: each visitor has a fixed id (so a fixed bucket) and
+	// draws its random numbers before any request, in creation order. Drawing
+	// after a request would tie outcomes to network timing, not to the seed.
+	let visitors = 0;
 	async function visit(): Promise<void> {
-		const res = await fetch(edgeUrl);
-		const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0]!;
+		const cookie = `lab_vid=${(visitors++).toString(16).padStart(32, '0')}`;
+		const [engagedDraw, conversionDraw] = [random(), random()];
+		const res = await fetch(edgeUrl, { headers: { cookie } });
 		const html = await res.text();
 		const tag = /data-experiment="([^"]*)" data-bucket="(baseline|variant)"/.exec(html);
 		const [e, b] = [tag?.[1] ?? '', tag?.[2] ?? 'baseline'];
@@ -165,8 +171,8 @@ export async function runNextLoop(options: RunOptions = {}): Promise<RunResult> 
 		if (html.indexOf('>Get started<') < html.indexOf('data-install-command')) rate *= VISITOR_MODEL.ctaBeforeCommand;
 		const send = (k: string) => fetch(new URL('/_lab/beacon', edgeUrl), { method: 'POST', body: JSON.stringify({ e, b, k }) });
 		await send('visit');
-		if (random() < VISITOR_MODEL.engagedRate) await send('engaged');
-		if (random() < rate) await send('conversion');
+		if (engagedDraw < VISITOR_MODEL.engagedRate) await send('engaged');
+		if (conversionDraw < rate) await send('conversion');
 	}
 	async function traffic(intervals: number): Promise<void> {
 		for (let i = 0; i < intervals; i++) {
@@ -187,6 +193,7 @@ export async function runNextLoop(options: RunOptions = {}): Promise<RunResult> 
 			builder: new ReplayBuilder(dir ?? join(example, 'experiments', 'none')),
 			sandbox: new LocalSandbox({ config }),
 			verifier: new BrowserVerifier({ config, siteDir: repo, browser: theBrowser }),
+			specCheck: new GraftSpecCheck(),
 			evidenceDir: join(repo, 'lab', 'evidence'),
 			deployer,
 			meter: new StoreMeter({ store, config, now }),

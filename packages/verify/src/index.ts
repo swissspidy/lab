@@ -1,9 +1,10 @@
 import { mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join, relative, resolve, sep } from 'node:path';
+import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import type { CheckEvidence, CheckResult, Gate, LabConfig, RunningSite, Verifier, VerifyInput, VerifyReport } from '@lab/core';
+import { sitePages } from '@lab/core';
 import { runAcceptanceCheck } from './acceptance.ts';
 import { loadInvariants, runInvariant } from './invariants.ts';
 import type { Invariant } from './invariants.ts';
@@ -25,20 +26,6 @@ export interface BrowserVerifierOptions {
 }
 
 type Viewport = { width: number; height: number };
-
-function htmlPages(root: string | undefined): string[] {
-	if (!root) return ['index.html'];
-	const out: string[] = [];
-	const walk = (dir: string) => {
-		for (const name of readdirSync(dir)) {
-			const path = join(dir, name);
-			if (statSync(path).isDirectory()) walk(path);
-			else if (name.endsWith('.html')) out.push(relative(root, path).split(sep).join('/'));
-		}
-	};
-	walk(root);
-	return out.toSorted();
-}
 
 function assetBytes(root: string): number {
 	let total = 0;
@@ -105,7 +92,7 @@ export class BrowserVerifier implements Verifier {
 	}
 
 	private async suite(browser: Browser, site: RunningSite, invariants: Invariant[], label: string, evidenceDir: string): Promise<SuiteRun> {
-		const pages = this.config.site.pages ?? htmlPages(site.root);
+		const pages = sitePages(this.config, site.root);
 		const viewports = this.config.viewports;
 		const jobs = pages.flatMap((page) => viewports.map((viewport) => ({ page, viewport })));
 		const measurements = await pool(jobs, this.concurrency, (j) => measurePage(browser, site.url, j.page, j.viewport, axeSource));

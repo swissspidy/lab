@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkPatch, globToRegExp, matchesAny, parsePatch, validateConfig } from '../src/index.ts';
+import { WEBSITE_SCOPES, checkPatch, globToRegExp, matchesAny, parsePatch, validateConfig } from '../src/index.ts';
 
 const config = validateConfig({
 	site: { repo: '.', build: 'npm run build', outDir: 'dist' },
@@ -14,7 +14,8 @@ const config = validateConfig({
 
 const diff = (path: string, body = '@@ -1 +1 @@\n-a\n+b\n', header = '') =>
 	`diff --git a/${path} b/${path}\n${header}index 1..2 100644\n--- a/${path}\n+++ b/${path}\n${body}`;
-const failing = (patch: string) => checkPatch(patch, config).filter((r) => !r.passed).map((r) => r.check);
+const ALL = Object.keys(WEBSITE_SCOPES);
+const failing = (patch: string, permissions: string[] = ALL) => checkPatch(patch, config, permissions).filter((r) => !r.passed).map((r) => r.check);
 
 describe('globToRegExp', () => {
 	it('matches like a glob', () => {
@@ -82,9 +83,28 @@ describe('checkPatch', () => {
 	});
 
 	it('rejects binary changes, symlinks and unsafe paths', () => {
-		assert.deepEqual(failing('diff --git a/src/styles/a.png b/src/styles/a.png\nindex 1..2 100644\nGIT binary patch\nliteral 1\n'), ['static.patch-format']);
+		assert.deepEqual(failing('diff --git a/src/styles/a.png b/src/styles/a.png\nindex 1..2 100644\nGIT binary patch\nliteral 1\n'), ['static.patch-format', 'static.permissions']);
 		assert.deepEqual(failing('diff --git a/src/styles/l.css b/src/styles/l.css\nnew file mode 120000\nindex 0..1\n--- /dev/null\n+++ b/src/styles/l.css\n@@ -0,0 +1 @@\n+../../package.json\n'), ['static.patch-format']);
 		assert.ok(failing(diff('src/../package.json')).includes('static.patch-format'));
+	});
+
+	it('rejects a file the spec has no permission for', () => {
+		assert.deepEqual(failing(diff('src/styles/site.css'), ['style:write']), []);
+		assert.deepEqual(failing(diff('src/pages/index.html'), ['style:write']), ['static.permissions']);
+		const both = diff('src/styles/site.css') + diff('src/pages/index.html');
+		assert.deepEqual(failing(both, ['style:write']), ['static.permissions']);
+		assert.deepEqual(failing(both, ['markup:write', 'style:write']), []);
+		const result = checkPatch(diff('src/pages/index.html'), config, ['style:write']).find((r) => r.check === 'static.permissions');
+		assert.match(result!.message, /src\/pages\/index\.html \(needs markup:write\)/);
+	});
+
+	it('rejects a file no scope covers, whatever the permissions', () => {
+		assert.deepEqual(failing(diff('src/pages/run.sh')), ['static.permissions']);
+		assert.deepEqual(failing(diff('src/pages/Makefile')), ['static.permissions']);
+	});
+
+	it('checks both sides of a rename against the permissions', () => {
+		assert.deepEqual(failing('diff --git a/src/styles/a.css b/src/styles/a.html\nsimilarity index 100%\nrename from src/styles/a.css\nrename to src/styles/a.html\n', ['style:write']), ['static.permissions']);
 	});
 
 	it('rejects an empty patch', () => {

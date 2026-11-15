@@ -9,6 +9,10 @@
 	"touches": [
 		"src/pages/index.html"
 	],
+	"mount": "page.index",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

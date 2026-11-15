@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import { checkPatch, hashPatch } from './patch.ts';
 import { validateSpec } from './spec.ts';
 import { StageError } from './types.ts';
-import type { BucketStats, Builder, CheckResult, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Proposer, RepoRef, RunningSite, Sandbox, Verifier, VerifyReport } from './types.ts';
+import { listSiteFiles, sitePages, websiteHost } from './website.ts';
+import type { BucketStats, Builder, CheckResult, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Proposer, RepoRef, RunningSite, Sandbox, SpecCheck, Verifier, VerifyReport } from './types.ts';
 
 export interface IterationDeps {
 	config: LabConfig;
@@ -18,6 +19,12 @@ export interface IterationDeps {
 	/** Root for evidence; each experiment gets a subdirectory. */
 	evidenceDir: string;
 	baseline?: BucketStats | null;
+	/**
+	 * Checks the spec against what the site offers (its pages and the kinds
+	 * of files it may change) once the baseline is built. The Graft adapter
+	 * provides one; without it, only the static gate enforces permissions.
+	 */
+	specCheck?: SpecCheck;
 }
 
 export type IterationOutcome = 'verify_passed' | 'verify_failed' | 'aborted';
@@ -95,7 +102,7 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 	await append({ ...base, type: 'built', payload: { patch: variant.patch } });
 
 	// Static patch gate: the orchestrator reads the patch itself.
-	const staticResults = checkPatch(variant.patch, config);
+	const staticResults = checkPatch(variant.patch, config, spec.permissions);
 	if (failuresOf(staticResults).length > 0) {
 		const failures = failuresOf(staticResults);
 		await append({ ...base, type: 'verify_failed', payload: { failures, results: staticResults } });
@@ -113,6 +120,14 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 			const failure = describe(error);
 			await append({ ...base, type: 'aborted', payload: { stage: 'sandbox', target: 'baseline', ...failure } });
 			return result(spec.id, 'aborted', `The baseline does not build: ${failure.message}`);
+		}
+		if (deps.specCheck) {
+			const host = websiteHost(config, listSiteFiles(site.dir, config), sitePages(config, baselineSite.root));
+			const problems = deps.specCheck.check(spec, host).filter((d) => d.severity === 'error');
+			if (problems.length > 0) {
+				await append({ ...base, type: 'aborted', payload: { stage: 'spec', diagnostics: problems } });
+				return result(spec.id, 'aborted', problems.map((d) => `${d.code}: ${d.message}`).join(' '));
+			}
 		}
 		let variantSite: RunningSite;
 		try {
