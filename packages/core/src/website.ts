@@ -8,6 +8,7 @@ import { lstatSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, posix, relative, sep } from 'node:path';
 import { effectiveDeny } from './config.ts';
 import { matchesAny } from './glob.ts';
+import { StageError } from './types.ts';
 import type { LabConfig } from './types.ts';
 
 /** Every scope a website can offer, and the file extensions each one covers. */
@@ -58,26 +59,32 @@ export const SITE_SLOT = 'site';
 /** A mount slot: `site`, or `page.<route>` with dot-separated segments. */
 export const SLOT = /^(?:site|page(?:\.[a-z][a-z0-9-]*)+)$/;
 
+/** A page's route: `docs.html`, `docs` and `docs/index.html` are all `docs`; the home page is `index`. */
+export function pageRoute(page: string): string {
+	const route = page.replace(/^\.\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html?$/i, '').replace(/(?:^|\/)index$/, '');
+	return route === '' ? 'index' : route;
+}
+
+/** A segment used as is: lowercase words joined by single dashes, starting with a letter. */
+const PLAIN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
 /**
  * The slot of a page, as checks name pages: `index.html` and `.` are
  * `page.index`, `docs.html`, `docs` and `docs/index.html` are `page.docs`
  * (one route), `docs/intro.html` is `page.docs.intro`.
  *
  * A slot depends on its own page only, so adding or removing other pages
- * never renames it. A segment that is not already lowercase letters, digits
- * and dashes starting with a letter is slugged and gets the first six hex
- * digits of its sha256: `About` is `about-<hash>`, `中文` is `p-<hash>`.
- * Different routes therefore get different slots.
+ * never renames it. A segment that is not plain is slugged and gets `--`
+ * and the first eight hex digits of its sha256: `About` is
+ * `about--<hash>`, `中文` is `p--<hash>`. A plain segment never contains
+ * `--`, so it cannot look like a hashed one.
  */
 export function pageSlot(page: string): string {
-	let route = page.replace(/^\.\/?/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html?$/i, '');
-	route = route.replace(/(?:^|\/)index$/, '');
-	const segments = route === '' ? ['index'] : route.split('/');
-	return `page.${segments.map((segment) => {
-		if (/^[a-z][a-z0-9-]*$/.test(segment)) return segment;
-		const slug = segment.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
-		const hash = createHash('sha256').update(segment).digest('hex').slice(0, 6);
-		return `${/^[a-z]/.test(slug) ? slug : `p${slug ? `-${slug}` : ''}`}-${hash}`;
+	return `page.${pageRoute(page).split('/').map((segment) => {
+		if (PLAIN.test(segment)) return segment;
+		const slug = segment.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+		const hash = createHash('sha256').update(segment).digest('hex').slice(0, 8);
+		return `${/^[a-z]/.test(slug) ? slug : `p${slug ? `-${slug}` : ''}`}--${hash}`;
 	}).join('.')}`;
 }
 
@@ -98,9 +105,17 @@ export interface WebsiteHost {
 export function websiteHost(config: LabConfig, files: readonly string[], pages: readonly string[]): WebsiteHost {
 	const slots: WebsiteHost['slots'] = { [SITE_SLOT]: { title: 'The whole site', page: null } };
 	// Pages that are one route (`docs.html` and `docs/index.html`) share a
-	// slot; the first in sorted order is its anchor.
+	// slot; the first in sorted order is its anchor. Two routes on one slot
+	// would need a hash collision; it is refused, never resolved silently.
+	const routes = new Map<string, string>();
 	for (const page of [...pages].toSorted()) {
 		const slot = pageSlot(page);
+		const route = pageRoute(page);
+		const taken = routes.get(slot);
+		if (taken !== undefined && taken !== route) {
+			throw new StageError('website-slot-collision', `The pages \`${taken}\` and \`${route}\` map to the same slot \`${slot}\`. Rename one of them.`);
+		}
+		routes.set(slot, route);
 		slots[slot] ??= { title: `The page ${page}`, page };
 	}
 	const deny = effectiveDeny(config);

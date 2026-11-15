@@ -101,11 +101,16 @@ describe('The website as a Graft surface', () => {
 		assert.equal(pageSlot('docs.html'), 'page.docs');
 		assert.equal(pageSlot('docs/index.html'), 'page.docs');
 		assert.equal(pageSlot('.'), 'page.index');
-		assert.match(pageSlot('About.html'), /^page\.about-[0-9a-f]{6}$/);
-		assert.match(pageSlot('404.html'), /^page\.p-404-[0-9a-f]{6}$/);
+		assert.match(pageSlot('About.html'), /^page\.about--[0-9a-f]{8}$/);
+		assert.match(pageSlot('404.html'), /^page\.p-404--[0-9a-f]{8}$/);
+		// A page named like another page's hashed slot is not plain, so it is hashed too.
+		const about = pageSlot('About.html');
+		const lookalike = `${about.slice('page.'.length)}.html`;
+		assert.notEqual(pageSlot(lookalike), about);
+		assert.deepEqual(Object.keys(websiteHost(config, files, ['About.html', lookalike]).slots).length, 3);
 		const zh = pageSlot('docs/中文.html');
 		const guide = pageSlot('docs/指南.html');
-		assert.match(zh, /^page\.docs\.p-[0-9a-f]{6}$/);
+		assert.match(zh, /^page\.docs\.p--[0-9a-f]{8}$/);
 		assert.notEqual(zh, guide);
 
 		const pages = ['docs/中文.html', 'docs/指南.html', 'docs.html', 'docs/index.html'];
@@ -114,6 +119,9 @@ describe('The website as a Graft surface', () => {
 			Object.entries(before.slots).map(([slot, { page }]) => [slot, page]).toSorted(),
 			[['page.docs', 'docs.html'], [zh, 'docs/中文.html'], [guide, 'docs/指南.html'], ['site', null]].toSorted(),
 		);
+		// Two routes that still land on one slot (a found 32-bit hash collision) are refused, not merged.
+		assert.equal(pageSlot("X~*$$Y.html"), pageSlot("X(+')~Y.html"));
+		assert.throws(() => websiteHost(config, files, ["X~*$$Y.html", "X(+')~Y.html"]), (e: Error & { code?: string }) => e.code === 'website-slot-collision');
 		// A new page that sorts first renames nothing: every slot keeps its page.
 		const after = websiteHost(config, files, ['docs/一.html', ...pages]);
 		for (const [slot, value] of Object.entries(before.slots)) assert.deepEqual(after.slots[slot], value);
