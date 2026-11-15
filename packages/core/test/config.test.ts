@@ -70,6 +70,10 @@ describe('validateConfig', () => {
 		assert.equal(validateConfig({ ...valid(), traffic: { ...valid().traffic, keepProbability: 0.99 } }).config!.traffic.keepProbability, 0.99);
 		for (const keepProbability of [0.8, 1]) assert.deepEqual(codes({ ...valid(), traffic: { ...valid().traffic, keepProbability } }), ['config-traffic-keep'], String(keepProbability));
 		assert.deepEqual(codes({ ...valid(), traffic: { ...valid().traffic, keepProbability: 'high' } }), ['config-invalid-type']);
+		const unset = validateConfig({ ...valid(), traffic: { ...valid().traffic, keepProbability: undefined, intervalHours: undefined } });
+		assert.deepEqual(unset.diagnostics, [], 'an optional key set to undefined is left out');
+		assert.equal(unset.config!.traffic.keepProbability, 0.95);
+		assert.equal(unset.config!.traffic.intervalHours, 24);
 	});
 
 	it('accepts auto autonomy with a warning: the entry criteria decide when it takes effect', () => {

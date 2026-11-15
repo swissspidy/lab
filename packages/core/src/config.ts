@@ -162,7 +162,13 @@ export function validateConfig(raw: unknown): ConfigResult {
 		viewports: DEFAULTS.viewports,
 		autonomy: DEFAULTS.autonomy,
 		...raw,
-		traffic: { intervalHours: DEFAULTS.intervalHours, minDetectableEffect: DEFAULTS.minDetectableEffect, keepProbability: DEFAULTS.keepProbability, ...rawTraffic },
+		traffic: {
+			...rawTraffic,
+			// An optional key set to undefined takes the default, as if it were left out.
+			intervalHours: rawTraffic.intervalHours ?? DEFAULTS.intervalHours,
+			minDetectableEffect: rawTraffic.minDetectableEffect ?? DEFAULTS.minDetectableEffect,
+			keepProbability: rawTraffic.keepProbability ?? DEFAULTS.keepProbability,
+		},
 		rollback: { ...DEFAULTS.rollback, ...(isObject(raw.rollback) ? raw.rollback : {}) },
 	} as LabConfig;
 
