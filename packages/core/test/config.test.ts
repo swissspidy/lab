@@ -65,6 +65,13 @@ describe('validateConfig', () => {
 		assert.deepEqual(codes({ ...valid(), traffic: { ...valid().traffic, maxDays: 1.5 } }), ['config-traffic-days']);
 	});
 
+	it('defaults the keep threshold to 0.95 and refuses one below 0.9 or of 1', () => {
+		assert.equal(validateConfig(valid()).config!.traffic.keepProbability, 0.95);
+		assert.equal(validateConfig({ ...valid(), traffic: { ...valid().traffic, keepProbability: 0.99 } }).config!.traffic.keepProbability, 0.99);
+		for (const keepProbability of [0.8, 1]) assert.deepEqual(codes({ ...valid(), traffic: { ...valid().traffic, keepProbability } }), ['config-traffic-keep'], String(keepProbability));
+		assert.deepEqual(codes({ ...valid(), traffic: { ...valid().traffic, keepProbability: 'high' } }), ['config-invalid-type']);
+	});
+
 	it('accepts auto autonomy with a warning: the entry criteria decide when it takes effect', () => {
 		const result = validateConfig({ ...valid(), autonomy: 'auto' });
 		assert.ok(result.config);

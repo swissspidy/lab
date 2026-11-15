@@ -183,7 +183,7 @@ summary { cursor: pointer; margin: .5rem 0; }
 <p class="muted">${views.length} experiment(s): ${count('kept')} kept, ${count('reverted')} reverted, ${count('verify_failed')} rejected by verification, ${count('aborted')} aborted, ${views.filter((v) => ['shipped', 'measured'].includes(v.state)).length} live. Generated ${escape((options.generatedAt ?? new Date()).toISOString().slice(0, 16).replace('T', ' '))} UTC from the ledger.</p>
 <details><summary>How to read this</summary>
 <p>The lab improves a website one experiment at a time. For each experiment an agent writes a hypothesis, the change it wants to make and acceptance criteria. The change is built as a patch and tested in a sandbox. It must pass every check: the site's own invariants (what the site must always do), quality budgets (accessibility, errors, speed, layout) and its own criteria. Only then can a person approve it. It is then shown to a share of visitors, measured against the current site on one metric, and kept or reverted. Rejected and reverted experiments are normal results.</p>
-<p><em>P(expected effect)</em> is the probability, given the data so far, that the change moves the metric the way the hypothesis says. The lab keeps a change at 0.95 or more and reverts it at 0.05 or less.</p>
+<p><em>P(expected effect)</em> is the probability, given the data so far, that the change moves the metric the way the hypothesis says. The lab keeps a change at the site's keep threshold (0.95 by default) or more, once the planned sample is in, and reverts it at 0.05 or less, or when twice the planned sample shows no effect of the planned size.</p>
 </details>
 ${sections.join('\n') || '<p>The ledger is empty.</p>'}
 </main>

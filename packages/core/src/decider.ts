@@ -1,8 +1,16 @@
 import { probabilityBetter, requiredSamples } from './stats.ts';
 import type { BucketStats, Decider, Decision, ExperimentSpec, LabConfig, TrafficEstimate } from './types.ts';
 
+/** The default for `traffic.keepProbability`. */
 export const KEEP_PROBABILITY = 0.95;
 export const REVERT_PROBABILITY = 0.05;
+/**
+ * Futility: a change not kept once both buckets reached this many times the
+ * planned sample is reverted. The sample was planned for 80% power at the
+ * minimum detectable effect; at twice that, a real effect of that size is
+ * kept about 98% of the time, so what is left is most likely no effect.
+ */
+export const FUTILITY_MULTIPLE = 2;
 
 /** P(the variant moves the metric the way the spec expects). */
 export function probabilityExpected(stats: Pick<BucketStats, 'baseline' | 'variant'>, spec: Pick<ExperimentSpec, 'expectedEffect'>): number {
@@ -13,10 +21,12 @@ export function probabilityExpected(stats: Pick<BucketStats, 'baseline' | 'varia
 /**
  * The v0 decision rule. In doubt, the baseline stays:
  * - revert at once when a guardrail degraded;
- * - keep when P(expected effect) ≥ 0.95 and both buckets reached the
+ * - keep when P(expected effect) ≥ traffic.keepProbability (0.95) and both buckets reached the
  *   sample size planned at ship time (never less than minSamplesPerBucket);
- * - revert when P ≤ 0.05 with the minimum sample, or when maxDays passed;
- *   reverting early costs little, keeping early is how false wins happen.
+ * - revert when P ≤ 0.05 with the minimum sample, when both buckets reached
+ *   twice the planned sample without a keep (futility), or when maxDays
+ *   passed; reverting early costs little, keeping early is how false wins
+ *   happen, and a change with no effect should not hold the only slot.
  * - otherwise keep running.
  */
 export class BetaBinomialDecider implements Decider {
@@ -34,8 +44,13 @@ export class BetaBinomialDecider implements Decider {
 		const planned = stats.baseline.visits >= target && stats.variant.visits >= target;
 		const p = probabilityExpected(stats, spec);
 		const rates = `baseline ${(rate(stats.baseline) * 100).toFixed(2)}%, variant ${(rate(stats.variant) * 100).toFixed(2)}%`;
-		if (planned && p >= KEEP_PROBABILITY) return { action: 'keep', reason: `P(${spec.expectedEffect}) = ${p.toFixed(3)} ≥ ${KEEP_PROBABILITY} (${rates}).` };
+		const keepAt = this.config.traffic.keepProbability ?? KEEP_PROBABILITY;
+		if (planned && p >= keepAt) return { action: 'keep', reason: `P(${spec.expectedEffect}) = ${p.toFixed(3)} ≥ ${keepAt} (${rates}).` };
 		if (enough && p <= REVERT_PROBABILITY) return { action: 'revert', reason: `P(${spec.expectedEffect}) = ${p.toFixed(3)} ≤ ${REVERT_PROBABILITY} (${rates}).` };
+		const futile = FUTILITY_MULTIPLE * target;
+		if (stats.baseline.visits >= futile && stats.variant.visits >= futile) {
+			return { action: 'revert', reason: `No effect of the planned size: P = ${p.toFixed(3)} after ${futile} visits per bucket, twice the planned sample (${rates}).` };
+		}
 		if (stats.days >= maxDays) return { action: 'revert', reason: `Inconclusive after ${maxDays} days: P = ${p.toFixed(3)} (${rates}).` };
 		return {
 			action: 'continue',
