@@ -1,0 +1,16 @@
+{
+	"name": "lab-example-nextjs-proxy",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "NEXT_TELEMETRY_DISABLED=1 next build",
+		"start": "next start"
+	},
+	"dependencies": {
+		"@lab/next": "file:../../packages/next",
+		"next": "16.4.6",
+		"react": "19.3.1",
+		"react-dom": "19.3.1"
+	}
+}

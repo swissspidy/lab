@@ -1,0 +1,42 @@
+# .github/workflows/lab.yml in the site's repository.
+# Every 6 hours: one step of the loop (measure, ship, wait or start a new
+# experiment). By hand: approve an experiment, check the status, or kill.
+name: lab
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      command:
+        type: choice
+        options: [run, approve, status, kill]
+        default: run
+      experiment:
+        description: For approve, the experiment id (see the last run's summary).
+        type: string
+
+permissions:
+  contents: write # to commit the ledger and kept changes
+
+concurrency:
+  group: lab
+  cancel-in-progress: false
+
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LAB_URL: ${{ vars.LAB_URL }} # the collector, e.g. https://lab.example.com
+      LAB_TOKEN: ${{ secrets.LAB_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }} # only if deploy.publish uses Vercel
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: swissspidy/lab@main
+        with:
+          command: ${{ inputs.command || 'run' }}
+          experiment: ${{ inputs.experiment }}

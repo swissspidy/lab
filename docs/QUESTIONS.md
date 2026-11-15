@@ -66,3 +66,11 @@ consent and API key questions for now, and make the remaining decisions.
     weeks. Options: a shorter `maxDays`, or a futility rule that reverts once
     the planned sample is reached and P sits between 0.2 and 0.8. Not changed
     yet; your call.
+16. **Where the collector runs.** The proxy and the scheduled loop both need an
+    always-on place for the state and the counts. I made it a small service
+    (`lab collect`). Alternatives: a key-value store of the host (Vercel Edge
+    Config, Cloudflare KV) with an adapter. Your call which host to support
+    first.
+17. **Promotion from CI.** The action pushes kept changes straight to the
+    branch it runs on. Opening a pull request instead would add a human step
+    after a keep; say if you want that.

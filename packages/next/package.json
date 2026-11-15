@@ -1,0 +1,14 @@
+{
+	"name": "@lab/next",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Run lab experiments on a Next.js site: a proxy.ts helper for bucketing, variant rewrites and the kill switch, and the beacon.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"devDependencies": {
+		"@lab/deploy": "0.0.0"
+	}
+}

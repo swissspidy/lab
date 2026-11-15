@@ -24,6 +24,12 @@ const emptyRow = (): Row => ({
 
 export const emptyCounts = (): BucketCounts => ({ visits: 0, conversions: 0, jsErrors: 0, engaged: 0 });
 
+function validData(value: unknown): Data {
+	const d = value as Partial<Data> | null;
+	if (!d || typeof d !== 'object' || typeof d.intervalMs !== 'number' || typeof d.series !== 'object' || d.series === null) throw new Error('Metrics data is malformed.');
+	return d as Data;
+}
+
 const toCounts = (r: Record<BeaconEvent, number>): BucketCounts => ({ visits: r.visit, conversions: r.conversion, jsErrors: r.js_error, engaged: r.engaged });
 
 export class MetricStore {
@@ -31,10 +37,14 @@ export class MetricStore {
 	private data: Data;
 	private dirty = false;
 
-	constructor(options: { intervalHours: number; file?: string }) {
+	constructor(options: { intervalHours: number; file?: string; data?: unknown }) {
 		this.file = options.file ?? null;
 		const intervalMs = options.intervalHours * 3_600_000;
-		this.data = this.file && existsSync(this.file) ? (JSON.parse(readFileSync(this.file, 'utf8')) as Data) : { intervalMs, series: {} };
+		this.data = options.data
+			? validData(options.data)
+			: this.file && existsSync(this.file)
+				? validData(JSON.parse(readFileSync(this.file, 'utf8')))
+				: { intervalMs, series: {} };
 		if (this.data.intervalMs !== intervalMs) throw new Error(`${this.file} uses a different interval. Move it aside to change traffic.intervalHours.`);
 	}
 
@@ -71,6 +81,11 @@ export class MetricStore {
 
 	intervals(experiment: string): number[] {
 		return Object.keys(this.data.series[experiment] ?? {}).map(Number).toSorted((a, b) => a - b);
+	}
+
+	/** The raw counts, as the collector serves them at /metrics. */
+	toJSON(): unknown {
+		return this.data;
 	}
 
 	/** Writes the store atomically, if it has a file and changed. */

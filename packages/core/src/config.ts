@@ -67,7 +67,7 @@ export function validateConfig(raw: unknown): ConfigResult {
 	}
 
 	const shape: Record<string, Record<string, string> | string> = {
-		site: { repo: 'string', build: 'string', outDir: 'string', check: 'string?' },
+		site: { repo: 'string', build: 'string', outDir: 'string', check: 'string?', serve: 'string?', pages: 'string[]?' },
 		metric: { id: 'string', kind: 'string' },
 		guardrailMetrics: 'string[]',
 		allow: 'string[]',
@@ -76,6 +76,7 @@ export function validateConfig(raw: unknown): ConfigResult {
 		budgets: { lcpMs: 'number', cls: 'number', axeViolations: 'number', bundleKbDelta: 'number' },
 		traffic: { share: 'number', minSamplesPerBucket: 'number', maxDays: 'number', intervalHours: 'number?', minDetectableEffect: 'number?' },
 		rollback: { jsErrorMargin: 'number?', bounceMargin: 'number?', minVisits: 'number?' },
+		deploy: { publish: 'string', retire: 'string?', env: 'string[]?' },
 		limits: { maxChangedLines: 'number', maxFiles: 'number' },
 		viewports: 'viewport[]',
 		autonomy: 'string',

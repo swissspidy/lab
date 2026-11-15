@@ -9,7 +9,8 @@ import { StageError, buildInScratch } from '@lab/core';
 import type { Deployer, LabConfig, RepoRef, Variant } from '@lab/core';
 
 export interface DeployState {
-	live: { experiment: string; share: number } | null;
+	/** `origin` is set when the variant is served from elsewhere (OriginDeployer). */
+	live: { experiment: string; share: number; origin?: string } | null;
 	/** When the kill switch was last used. */
 	killedAt?: string;
 }

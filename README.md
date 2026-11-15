@@ -52,6 +52,12 @@ Nothing has met real visitors or a real model yet. See
 [docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
 [docs/runs/nextjs/index.html](docs/runs/nextjs/index.html).
 
+## On a real Next.js site
+
+A `proxy.js` with `@lab/next` serves the experiments at request time, a small
+always-on collector keeps the state and the counts, and a GitHub Action runs
+the loop on a schedule. See [docs/NEXTJS.md](docs/NEXTJS.md).
+
 ## Try it on a Next.js site
 
 ```sh
@@ -150,7 +156,9 @@ passes the same suite in the same run:
 - `packages/deploy`: the reference deployer, edge server, beacon and meter.
 - `packages/report`: the static ledger viewer.
 - `packages/adapters`: adapters to Graft (and later Sandburg and Assay).
+- `packages/next`: `@lab/next`, the proxy helper and beacon for Next.js sites.
 - `packages/cli`: the `lab` command.
+- `action.yml`: the GitHub Action.
 - `fixtures/sim`: the traffic simulator.
 - `fixtures/site`: a small static site with two planted flaws.
 - `fixtures/good`, `fixtures/breakages`: patches that must pass, and patches

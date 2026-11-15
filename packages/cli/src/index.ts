@@ -19,7 +19,8 @@ import {
 } from '@lab/core';
 import type { Diagnostic, IterationResult, LabConfig, TickResult } from '@lab/core';
 import { AnthropicProvider, ModelBuilder, ModelProposer, ReplayBuilder, ReplayProposer } from '@lab/agent';
-import { MetricStore, ReferenceDeployer, StoreMeter, readState, startEdgeServer } from '@lab/deploy';
+import { CommandPublisher, FileState, MetricStore, OriginDeployer, ReferenceDeployer, RemoteMeter, RemoteState, StoreMeter, startCollector, startEdgeServer } from '@lab/deploy';
+import type { StateStore } from '@lab/deploy';
 import { LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
 import { GraftSpecProposer, recordingGraftSpecs } from '@lab/adapters';
@@ -42,6 +43,9 @@ Commands:
   report [dir]              Write the ledger as a static HTML page (--out).
   publish [dir]             Build the site and publish it on the reference host.
   serve [dir]               Run the reference host's edge server.
+  collect [dir]             Run the collector for sites with their own proxy
+                            (@lab/next): GET /state, POST /beacon, and with
+                            LAB_TOKEN, PUT /state and GET /metrics.
 
 Options:
   --experiment <d>   Replay the experiment in <d> (spec.json or a Graft
@@ -58,6 +62,10 @@ Options:
 
 The model is Claude (LAB_MODEL, default claude-opus-5-5), with credentials
 from ANTHROPIC_API_KEY or \`ant auth login\`.
+
+With LAB_URL and LAB_TOKEN set, run, status and kill use that collector for
+the deploy state and the metrics, so the loop can run anywhere (a scheduled
+CI job). Server apps ship variants with \`deploy.publish\` from the config.
 
 Exit codes: 0 ok, 1 invalid or rejected, 2 aborted, 64 usage.`;
 
@@ -104,7 +112,7 @@ async function main(argv: string[]): Promise<number> {
 		process.stdout.write(`${USAGE}\n`);
 		return command || values.help ? 0 : 64;
 	}
-	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report'];
+	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect'];
 	if (!known.includes(command)) {
 		process.stderr.write(`Unknown command \`${command}\`.\n\n${USAGE}\n`);
 		return 64;
@@ -131,9 +139,16 @@ async function main(argv: string[]): Promise<number> {
 	const ledger = new FileLedger(resolve(values.ledger ?? resolve(siteDir, LEDGER_FILE)));
 	const site = { dir: siteDir, commit: siteCommit(siteDir) };
 
-	// The kill switch needs no valid config or ledger: it only rewrites the host state.
+	const remote = process.env.LAB_URL && process.env.LAB_TOKEN ? { url: process.env.LAB_URL, token: process.env.LAB_TOKEN } : null;
+	const stateStore: StateStore = remote ? new RemoteState(remote) : new FileState(hostDir);
+	const noPublisher = { publish: async () => Promise.reject(new Error('This site is a server app: set `deploy.publish` in lab.config.ts to publish variants.')), retire: async () => {} };
+
+	// The kill switch needs no valid config or ledger: it only rewrites the deploy state.
 	if (command === 'kill') {
-		const result = await kill({ deployer: new ReferenceDeployer({ root: hostDir, config: report.config as LabConfig }), ledger, site });
+		const killer = report.config?.deploy || report.config?.site.serve || remote
+			? new OriginDeployer({ state: stateStore, publisher: report.config?.deploy ? new CommandPublisher({ config: report.config }) : noPublisher })
+			: new ReferenceDeployer({ root: hostDir, config: report.config as LabConfig });
+		const result = await kill({ deployer: killer, ledger, site });
 		process.stdout.write(`Killed: every variant share is 0%${result.experiment ? `; ${result.experiment} recorded as reverted` : ''}.\n`);
 		if (result.ledgerError) process.stdout.write(`The ledger could not be updated: ${result.ledgerError}\n`);
 		return 0;
@@ -145,7 +160,12 @@ async function main(argv: string[]): Promise<number> {
 	}
 	const config = report.config;
 	const store = () => new MetricStore({ intervalHours: config.traffic.intervalHours, file: resolve(hostDir, 'metrics.json') });
-	const deployer = new ReferenceDeployer({ root: hostDir, config });
+	// Static sites use the reference host; server apps (and remote runs) serve variants from their own origin.
+	const deployer =
+		config.deploy || config.site.serve || remote
+			? new OriginDeployer({ state: stateStore, publisher: config.deploy ? new CommandPublisher({ config }) : noPublisher })
+			: new ReferenceDeployer({ root: hostDir, config });
+	const meter = () => (remote ? new RemoteMeter({ ...remote, config }) : new StoreMeter({ store: store(), config }));
 
 	switch (command) {
 		case 'run': {
@@ -175,11 +195,10 @@ async function main(argv: string[]): Promise<number> {
 				evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')),
 			});
 			if (!values.dry) {
-				const metrics = store();
 				const result = await tick({
 					...iteration(),
 					deployer,
-					meter: new StoreMeter({ store: metrics, config }),
+					meter: meter(),
 					decider: new BetaBinomialDecider(config),
 					promote: async (variant) => void gitPromote(siteDir, variant),
 				});
@@ -205,11 +224,11 @@ async function main(argv: string[]): Promise<number> {
 		case 'status': {
 			const events = await ledger.history();
 			const live = liveExperiment(events);
-			const state = readState(hostDir);
+			const state = await stateStore.read();
 			const out: Record<string, unknown> = { host: hostDir, serving: state.live ?? 'baseline only', killedAt: state.killedAt ?? null, live };
 			const lines = [`Host: ${hostDir}`, `Serving: ${state.live ? `${state.live.experiment} to ${state.live.share * 100}%` : 'the baseline only'}${state.killedAt ? ` (kill switch used ${state.killedAt})` : ''}`];
 			if (live) {
-				const stats = await new StoreMeter({ store: store(), config }).read(live);
+				const stats = await meter().read(live);
 				const p = probabilityExpected(stats, specFromLedger(events, live));
 				out.stats = stats;
 				out.probability = p;
@@ -227,7 +246,19 @@ async function main(argv: string[]): Promise<number> {
 			process.stdout.write(`Wrote ${file}\n`);
 			return 0;
 		}
+		case 'collect': {
+			const port = Number(values.port ?? 8081);
+			const collector = await startCollector({ root: hostDir, store: store(), port, host: process.env.LAB_HOST ?? '127.0.0.1', ...(process.env.LAB_TOKEN ? { token: process.env.LAB_TOKEN } : {}) });
+			process.stdout.write(`Collector at ${collector.url} (state in ${hostDir})${process.env.LAB_TOKEN ? '' : '. No LAB_TOKEN: remote state writes and metric reads are off'}. Ctrl-C to stop.\n`);
+			await new Promise<void>((done) => process.once('SIGINT', done));
+			await collector.close();
+			return 0;
+		}
 		case 'publish': {
+			if (!(deployer instanceof ReferenceDeployer)) {
+				process.stderr.write('`lab publish` is for static sites on the reference host. A server app is published by its own deployment.\n');
+				return 64;
+			}
 			await deployer.publish(site);
 			process.stdout.write(`Published ${siteDir} at ${site.commit} to ${hostDir}.\n`);
 			return 0;

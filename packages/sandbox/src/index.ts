@@ -1,4 +1,4 @@
-import { buildInScratch } from '@lab/core';
+import { buildInScratch, startService } from '@lab/core';
 import type { LabConfig, RepoRef, RunningSite, Sandbox, Variant } from '@lab/core';
 import { serveDir } from './serve.ts';
 
@@ -32,12 +32,15 @@ export class LocalSandbox implements Sandbox {
 			...(this.options.scratch === undefined ? {} : { scratch: this.options.scratch }),
 		});
 		try {
-			const server = await serveDir(build.outDir);
+			// A server app runs its own server; anything else is served as static files.
+			const server = this.config.site.serve
+				? await startService(this.config.site.serve, build.work, this.options.timeoutMs ?? 120_000)
+				: await serveDir(build.outDir);
 			return {
 				url: server.url,
 				root: build.outDir,
 				stop: async () => {
-					await server.close();
+					await ('stop' in server ? server.stop() : server.close());
 					build.cleanup();
 				},
 			};

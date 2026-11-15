@@ -1,0 +1,102 @@
+name: lab
+description: Run one step of the lab's loop on a site, with the ledger and kept changes committed back.
+branding:
+  icon: activity
+  color: blue
+
+inputs:
+  site:
+    description: The site directory, with lab.config.ts.
+    default: .
+  command:
+    description: "run (one scheduled step), approve, kill, status, doctor or report."
+    default: run
+  experiment:
+    description: For approve, the experiment id.
+    default: ''
+  dry:
+    description: With run, stop after Verify and ship nothing.
+    default: 'false'
+  replay:
+    description: With run, replay the experiment in this directory instead of asking the model.
+    default: ''
+  commit:
+    description: Commit the ledger, recorded specs and kept changes, and push them.
+    default: 'true'
+  node-version:
+    description: Node.js version.
+    default: '24'
+
+outputs:
+  exit-code:
+    description: The lab command's exit code (0 ok, 1 rejected or invalid, 2 aborted).
+    value: ${{ steps.lab.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Install the lab
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund
+
+    - name: Install the site's dependencies
+      shell: bash
+      env:
+        SITE: ${{ inputs.site }}
+      run: |
+        if [ -f "$SITE/package-lock.json" ]; then npm ci --prefix "$SITE" --no-audit --no-fund; fi
+
+    - name: Install Chromium
+      if: inputs.command == 'run'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npx playwright install --with-deps chromium
+
+    - name: Run the lab
+      id: lab
+      shell: bash
+      env:
+        SITE: ${{ inputs.site }}
+        COMMAND: ${{ inputs.command }}
+        EXPERIMENT: ${{ inputs.experiment }}
+        DRY: ${{ inputs.dry }}
+        REPLAY: ${{ inputs.replay }}
+        LAB_CLI: ${{ github.action_path }}/packages/cli/src/index.ts
+      run: |
+        case "$COMMAND" in run|approve|kill|status|doctor|report) ;; *) echo "Unknown command: $COMMAND" >&2; exit 64 ;; esac
+        git config user.name "lab"
+        git config user.email "lab@users.noreply.github.com"
+        args=("$COMMAND")
+        if [ "$COMMAND" = approve ]; then
+          [ -n "$EXPERIMENT" ] || { echo "approve needs the experiment input" >&2; exit 64; }
+          args+=("$EXPERIMENT")
+        fi
+        args+=("$SITE")
+        [ "$COMMAND" = approve ] && args+=(--by "$GITHUB_ACTOR")
+        [ "$COMMAND" = run ] && [ "$DRY" = true ] && args+=(--dry)
+        [ "$COMMAND" = run ] && [ -n "$REPLAY" ] && args+=(--experiment "$REPLAY")
+        set +e
+        node "$LAB_CLI" "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
+        code=${PIPESTATUS[0]}
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        # Rejected (1) and aborted (2) are normal outcomes of an iteration, not failures of the job.
+        if [ "$code" -ne 0 ] && [ "$code" -ne 1 ] && [ "$code" -ne 2 ]; then exit "$code"; fi
+        if [ "$COMMAND" != run ] && [ "$code" -ne 0 ]; then exit "$code"; fi
+
+    - name: Commit the ledger and kept changes
+      if: inputs.commit == 'true' && (inputs.command == 'run' || inputs.command == 'approve' || inputs.command == 'kill')
+      shell: bash
+      env:
+        SITE: ${{ inputs.site }}
+        COMMAND: ${{ inputs.command }}
+      run: |
+        git add -f -- "$SITE/lab/ledger.jsonl" 2>/dev/null || true
+        [ -d "$SITE/lab/specs" ] && git add -f -- "$SITE/lab/specs"
+        if ! git diff --cached --quiet; then git commit -q -m "lab: $COMMAND"; fi
+        if [ -n "$(git log --branches --not --remotes --oneline)" ]; then git push; fi
