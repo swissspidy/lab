@@ -55,7 +55,7 @@ describe('Next.js proxy (server mode), end to end', { timeout: 900_000 }, () => 
 		collector = await startCollector({ root: host, store });
 		// The site's production deployment: its own server, its proxy pointed at the lab.
 		baselineBuild = await buildInScratch({ dir: repo, commit: 'site' }, config);
-		baseline = await startService(config.site.serve!, baselineBuild.work, 120_000, { LAB_URL: collector.url, LAB_CACHE_MS: '200' });
+		baseline = await startService(config.site.serve!, { cwd: baselineBuild.work, timeoutMs: 120_000, env: { LAB_URL: collector.url, LAB_CACHE_MS: '200' } });
 		publisher = new LocalServePublisher({ config });
 		deployer = new OriginDeployer({ root: host, publisher });
 		ledger = new FileLedger(join(repo, 'lab', 'ledger.jsonl'));

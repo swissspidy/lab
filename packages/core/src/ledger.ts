@@ -203,7 +203,7 @@ export class FileLedger implements Ledger {
 			at: input.at ?? this.now().toISOString(),
 			siteCommit: input.siteCommit,
 			patchHash: input.patchHash,
-			payload: input.payload,
+			payload: input.payload as Record<string, unknown>,
 			prev: last?.hash ?? null,
 		};
 		const event: LedgerEvent = { ...body, hash: hashEvent(body) };

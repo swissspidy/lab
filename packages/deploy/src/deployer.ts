@@ -16,11 +16,15 @@ export interface DeployState {
 	killedAt?: string;
 }
 
+/**
+ * The local state. A missing, unreadable or malformed state.json serves no
+ * variant: the same rule as the edge and the proxy, so a hand-edited file
+ * with a bad share or origin can never route visitors.
+ */
 export const readState = (root: string): DeployState => {
 	try {
-		return JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')) as DeployState;
+		return parseDeployState(JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'))) ?? { live: null };
 	} catch {
-		// No state, or an unreadable one: serve no variant.
 		return { live: null };
 	}
 };
@@ -50,8 +54,10 @@ export function parseDeployState(value: unknown): DeployState | null {
 	if (typeof l.experiment !== 'string' || !SAFE_ID.test(l.experiment)) return null;
 	if (typeof l.share !== 'number' || !(l.share > 0 && l.share <= 0.5)) return null;
 	if (l.origin !== undefined) {
+		// Only a string: anything else would pass through String() and then be dropped, keeping `live`.
+		if (typeof l.origin !== 'string') return null;
 		try {
-			if (!['http:', 'https:'].includes(new URL(String(l.origin)).protocol)) return null;
+			if (!['http:', 'https:'].includes(new URL(l.origin).protocol)) return null;
 		} catch {
 			return null;
 		}

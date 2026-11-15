@@ -19,7 +19,7 @@ function input(type: LedgerEventType, experiment = 'exp-0001', payload: Record<s
 		siteCommit: 'abc1234',
 		patchHash: type === 'proposed' ? null : PATCH,
 		payload: { ...defaults[type], ...payload },
-	};
+	} as LedgerEventInput;
 }
 
 describe('FileLedger', () => {
@@ -88,12 +88,12 @@ describe('FileLedger', () => {
 
 	it('refuses malformed events', async () => {
 		const l = ledger();
-		await assert.rejects(l.append({ ...input('proposed'), payload: {} }), /payload.source/);
+		await assert.rejects(l.append({ ...input('proposed'), payload: {} } as LedgerEventInput), /payload.source/);
 		await assert.rejects(l.append({ ...input('proposed'), experiment: 'Exp 1' }), /ledger-invalid-event/);
 		await l.append(input('proposed'));
 		await assert.rejects(l.append({ ...input('built'), patchHash: null }), /needs `patchHash`/);
 		await l.append(input('built'));
-		await assert.rejects(l.append({ ...input('verify_failed'), payload: { failures: [] } }), /payload.failures/);
+		await assert.rejects(l.append({ ...input('verify_failed'), payload: { failures: [] } } as LedgerEventInput), /payload.failures/);
 	});
 
 	it('detects an edited event', async () => {

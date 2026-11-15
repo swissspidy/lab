@@ -7,8 +7,8 @@
 // `lab` is the lab's collector: it serves the current state at /state and
 // takes beacons at /beacon. Next.js is passed in, so this package does not
 // depend on a Next.js version.
-import { BEACON_PATH, COOKIE_BUCKET, COOKIE_EXPERIMENT, COOKIE_VISITOR, decide, parseState } from './decide.ts';
-import type { LabState } from './decide.ts';
+import { BEACON_PATH, COOKIE_BUCKET, COOKIE_EXPERIMENT, COOKIE_VISITOR, parseState, route } from './route.ts';
+import type { LabState } from './route.ts';
 
 interface CookieStore {
 	get(name: string): { value: string } | undefined;
@@ -87,7 +87,7 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 		// Not configured (a variant deployment, say): change nothing, set no cookies.
 		// A variant served behind the site's proxy must not overwrite its cookies.
 		if (!base) return NextResponse.next();
-		const decision = decide(request.cookies.get(COOKIE_VISITOR)?.value, await state());
+		const decision = route(request.cookies.get(COOKIE_VISITOR)?.value, await state());
 		// Never rewrite to ourselves: a variant deployment that also runs this proxy would loop.
 		if (decision.rewriteTo && new URL(decision.rewriteTo).host === url.host) {
 			decision.rewriteTo = null;
@@ -96,7 +96,7 @@ export function createLabProxy<R extends ProxyResponse>(options: LabProxyOptions
 		const response = decision.rewriteTo ? NextResponse.rewrite(new URL(url.pathname + url.search, decision.rewriteTo)) : NextResponse.next();
 		if (decision.newVisitor) response.cookies.set(COOKIE_VISITOR, decision.visitor, { path: '/', maxAge: YEAR, httpOnly: true, sameSite: 'lax' });
 		// Read by the beacon; they carry nothing but the experiment id and bucket.
-		response.cookies.set(COOKIE_EXPERIMENT, decision.experiment, { path: '/', sameSite: 'lax' });
+		response.cookies.set(COOKIE_EXPERIMENT, decision.experiment ?? '', { path: '/', sameSite: 'lax' });
 		response.cookies.set(COOKIE_BUCKET, decision.bucket, { path: '/', sameSite: 'lax' });
 		return response;
 	};

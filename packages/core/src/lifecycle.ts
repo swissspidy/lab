@@ -7,7 +7,7 @@ import { experimentStates, sha256 } from './ledger.ts';
 import { runIteration } from './orchestrator.ts';
 import type { IterationDeps, IterationResult } from './orchestrator.ts';
 import { StageError } from './types.ts';
-import type { Decider, Deployer, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Meter, RepoRef, Variant } from './types.ts';
+import type { BucketStats, Decider, Deployer, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Meter, RepoRef, Variant } from './types.ts';
 
 const DAY_MS = 86_400_000;
 
@@ -50,12 +50,12 @@ function stateOf(events: LedgerEvent[], id: string) {
 	return experimentStates(events).get(id);
 }
 
-export async function approve(deps: { ledger: Ledger; site: RepoRef }, id: string, by: string): Promise<LedgerEvent> {
+export async function approve(deps: { ledger: Ledger; site: RepoRef; now?: () => Date }, id: string, by: string): Promise<LedgerEvent> {
 	const events = await deps.ledger.history();
 	const state = stateOf(events, id);
 	if (state !== 'verify_passed') throw new StageError('approve-invalid-state', `${id} is ${state ? `at \`${state}\`` : 'not in the ledger'}; only a verified experiment can be approved.`);
 	const built = events.find((e) => e.experiment === id && e.type === 'built')!;
-	return deps.ledger.append({ type: 'approved', experiment: id, siteCommit: deps.site.commit, patchHash: built.patchHash, payload: { by } });
+	return deps.ledger.append({ type: 'approved', experiment: id, siteCommit: deps.site.commit, patchHash: built.patchHash, payload: { by }, ...(deps.now ? { at: deps.now().toISOString() } : {}) });
 }
 
 export type LiveOutcome =
@@ -92,7 +92,8 @@ export async function measure(deps: LiveDeps): Promise<LiveOutcome> {
 	const shipped = events.find((e) => e.experiment === id && e.type === 'shipped')!;
 	const base = { experiment: id, siteCommit: deps.site.commit, patchHash: shipped.patchHash };
 	const at = now.toISOString();
-	const stats = { ...(await deps.meter.read(id)), days: (now.getTime() - Date.parse(shipped.at)) / DAY_MS };
+	// The meter counts; the ledger says how long the experiment has run.
+	const stats: BucketStats = { ...(await deps.meter.read(id)), days: (now.getTime() - Date.parse(shipped.at)) / DAY_MS };
 	const spec = specFromLedger(events, id);
 
 	const degraded = Object.entries(stats.guardrails).filter(([, g]) => g.degraded);

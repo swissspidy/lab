@@ -114,6 +114,13 @@ describe('runIteration', () => {
 		assert.equal((await d.ledger.history()).at(-1)!.payload.stage, 'spec');
 	});
 
+	it('awaits an asynchronous spec check', async () => {
+		const specCheck: SpecCheck = { check: async () => [{ code: 'async-refusal', severity: 'error', message: 'Refused after an await.' }] };
+		const result = await runIteration(deps({ specCheck }));
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /async-refusal/);
+	});
+
 	it('records an aborted iteration when the spec check itself throws', async () => {
 		const specCheck: SpecCheck = {
 			check: () => {

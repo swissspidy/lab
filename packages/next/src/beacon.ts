@@ -1,4 +1,4 @@
-import { BEACON_PATH, COOKIE_BUCKET, COOKIE_EXPERIMENT } from './decide.ts';
+import { BEACON_PATH, COOKIE_BUCKET, COOKIE_EXPERIMENT } from './route.ts';
 
 /**
  * The beacon, as a script to inline in the root layout:

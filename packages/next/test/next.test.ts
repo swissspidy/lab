@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignBucket as hostBucket } from '@lab/deploy';
-import { assignBucket, createLabProxy, decide, labBeaconScript, parseState } from '../src/index.ts';
+import { assignBucket, createLabProxy, labBeaconScript, parseState, route } from '../src/index.ts';
 import type { LabState } from '../src/index.ts';
 
 type Call = { kind: 'next' | 'rewrite'; to?: string; cookies: Record<string, string> };
@@ -38,16 +38,17 @@ describe('@lab/next', () => {
 
 	it('parses only well-formed state; anything else serves the baseline', () => {
 		assert.deepEqual(parseState({ live: { experiment: 'exp-0001', share: 0.1, origin: 'https://v.example' } }).live?.origin, 'https://v.example');
-		for (const bad of [null, 'x', { live: { experiment: 'Exp 1', share: 0.1 } }, { live: { experiment: 'exp-0001', share: 2 } }, { live: { experiment: 'exp-0001', share: 0.1, origin: 'javascript:alert(1)' } }]) {
+		for (const bad of [null, 'x', { live: { experiment: 'Exp 1', share: 0.1 } }, { live: { experiment: 'exp-0001', share: 2 } }, { live: { experiment: 'exp-0001', share: 0.6 } }, { live: { experiment: 'exp-0001', share: 0 } }, { live: { experiment: 'exp-0001', share: 0.1, origin: 'javascript:alert(1)' } }, { live: { experiment: 'exp-0001', share: 0.1, origin: ['https://v.example'] } }]) {
 			assert.equal(parseState(bad).live, null, JSON.stringify(bad));
 		}
 	});
 
 	it('sends a variant visitor to the variant origin and a baseline visitor to the app', () => {
-		assert.equal(decide(visitorIn('variant'), live()).rewriteTo, 'http://variant.test');
-		assert.equal(decide(visitorIn('baseline'), live()).rewriteTo, null);
-		assert.equal(decide(visitorIn('variant'), { live: { experiment: 'exp-0001', share: 0.5 } }).bucket, 'baseline', 'no origin, no variant');
-		const fresh = decide(undefined, live());
+		assert.equal(route(visitorIn('variant'), live()).rewriteTo, 'http://variant.test');
+		assert.equal(route(visitorIn('baseline'), live()).rewriteTo, null);
+		assert.equal(route(visitorIn('variant'), { live: { experiment: 'exp-0001', share: 0.5 } }).bucket, 'baseline', 'no origin, no variant');
+		assert.deepEqual(route(visitorIn('variant'), { live: null }), { ...route(visitorIn('variant'), { live: null }), experiment: null, bucket: 'baseline', rewriteTo: null }, 'no experiment is null, not an empty id');
+		const fresh = route(undefined, live());
 		assert.ok(fresh.newVisitor && /^[0-9a-f]{32}$/.test(fresh.visitor));
 	});
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { BetaBinomialDecider, FileLedger, StageError, approve, gitPromote, kill, measure, planShip, requiredSamples, sha256, ship, tick, validateConfig } from '../src/index.ts';
-import type { BucketStats, Deployer, LiveDeps, TrafficEstimate } from '../src/index.ts';
+import type { BucketStats, Deployer, LedgerEventInput, LiveDeps, TrafficEstimate } from '../src/index.ts';
 
 const config = validateConfig({
 	site: { repo: '.', build: 'b', outDir: 'dist' },
@@ -69,7 +69,8 @@ describe('lifecycle', () => {
 	it('approves only a verified experiment', async () => {
 		await verified();
 		await assert.rejects(approve(deps(), 'exp-0009', 'me'), (e: unknown) => e instanceof StageError && e.code === 'approve-invalid-state');
-		await approve(deps(), 'exp-0001', 'me');
+		const approved = await approve({ ...deps(), now: () => new Date('2030-01-02T03:04:05.000Z') }, 'exp-0001', 'me');
+		assert.equal(approved.at, '2030-01-02T03:04:05.000Z', 'approve uses the lifecycle clock, like ship and measure');
 		await assert.rejects(approve(deps(), 'exp-0001', 'me'), (e: unknown) => e instanceof StageError && e.code === 'approve-invalid-state');
 	});
 
@@ -195,13 +196,13 @@ describe('lifecycle', () => {
 			await verified(id, patch);
 			const base = { experiment: id, siteCommit: 'c', patchHash: sha256(patch) };
 			await ledger.append({ ...base, type: 'approved', payload: { by } });
-			await ledger.append({ ...base, type: 'shipped', payload: {} });
+			await ledger.append({ ...base, type: 'shipped', payload: { share: 0.1 } });
 			if (end === 'kill' || end === 'guardrail') {
 				await ledger.append({ ...base, type: 'reverted', payload: { reason: end } });
 				return;
 			}
-			await ledger.append({ ...base, type: 'measured', payload: { day: 1 } });
-			await ledger.append({ ...base, type: end, payload: end === 'reverted' ? { reason: 'decision' } : {} });
+			await ledger.append({ ...base, type: 'measured', payload: { day: 1 } } as LedgerEventInput);
+			await ledger.append({ ...base, type: end, payload: { reason: 'decision' } });
 		}
 
 		it('waits for a person until the entry criteria hold', async () => {

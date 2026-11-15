@@ -262,8 +262,30 @@ export interface LedgerEvent {
 	hash: string;
 }
 
-/** What a caller supplies; the ledger fills in the rest. */
-export type LedgerEventInput = Omit<LedgerEvent, 'v' | 'seq' | 'prev' | 'hash' | 'at'> & { at?: string };
+/**
+ * The payload the lab writes for each event type. Readers still treat a
+ * ledger's payloads as untrusted (older ledgers, hand edits): this types
+ * what is appended, not what is read back.
+ */
+export type LedgerPayloads = {
+	/** `spec` is the proposal as received; it may be the invalid one an abort records. */
+	proposed: { source: HypothesisSource; spec: unknown };
+	built: { patch: string };
+	verify_passed: { results?: CheckResult[] };
+	verify_failed: { failures: CheckResult[]; results?: CheckResult[] };
+	approved: { by: string };
+	shipped: { share: number; plan?: unknown };
+	measured: { day: number; stats: BucketStats; probability: number; decision: Decision };
+	kept: { reason: string };
+	reverted: { reason: 'guardrail' | 'decision' | 'kill'; detail?: string; stats?: BucketStats };
+	/** `stage` names where the experiment stopped; the rest says why. */
+	aborted: { stage: string; [key: string]: unknown };
+};
+
+/** What a caller supplies; the ledger fills in the rest. The payload must match the event type. */
+export type LedgerEventInput = {
+	[T in LedgerEventType]: Omit<LedgerEvent, 'v' | 'seq' | 'prev' | 'hash' | 'at' | 'type' | 'payload'> & { type: T; payload: LedgerPayloads[T]; at?: string };
+}[LedgerEventType];
 
 export interface Diagnostic {
 	/** Stable, kebab-case: `config-unknown-key`. Tests assert on it. */
@@ -295,7 +317,7 @@ export interface Sandbox {
  * validator.
  */
 export interface SpecCheck {
-	check(spec: ExperimentSpec, host: WebsiteHost): Diagnostic[];
+	check(spec: ExperimentSpec, host: WebsiteHost): Diagnostic[] | Promise<Diagnostic[]>;
 }
 
 export interface Verifier {
@@ -312,8 +334,14 @@ export interface Deployer {
 	kill(): Promise<void>;
 }
 
+/**
+ * What a Meter reports: the counts and guardrails. How long the experiment
+ * has run is the ledger's to say (since its `shipped` event), not the meter's.
+ */
+export type MeterReading = Omit<BucketStats, 'days'>;
+
 export interface Meter {
-	read(experiment: string): Promise<BucketStats>;
+	read(experiment: string): Promise<MeterReading>;
 	traffic(): Promise<TrafficEstimate>;
 }
 

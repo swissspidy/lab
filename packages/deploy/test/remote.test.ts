@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -164,5 +164,22 @@ describe('CommandPublisher', () => {
 
 	it('is refused without deploy.publish', () => {
 		assert.throws(() => new CommandPublisher({ config: configWith() }), (e: unknown) => e instanceof StageError && e.code === 'deploy-no-command');
+	});
+});
+
+describe('readState', () => {
+	it('serves no variant from a malformed state.json, as the edge and the proxy do', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-state-'));
+		try {
+			const write = (value: unknown) => writeFileSync(join(dir, 'state.json'), typeof value === 'string' ? value : JSON.stringify(value));
+			write({ live: { experiment: 'exp-0001', share: 0.2 } });
+			assert.deepEqual(readState(dir).live, { experiment: 'exp-0001', share: 0.2 });
+			for (const bad of ['{not json', { live: { experiment: 'exp-0001', share: 0.9 } }, { live: { experiment: 'exp-0001', share: 0.2, origin: 'javascript:alert(1)' } }, { live: { experiment: 'exp-0001', share: 0.2, origin: ['https://preview.example'] } }, { nothing: true }]) {
+				write(bad);
+				assert.equal(readState(dir).live, null, JSON.stringify(bad));
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

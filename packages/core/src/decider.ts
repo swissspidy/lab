@@ -5,7 +5,7 @@ export const KEEP_PROBABILITY = 0.95;
 export const REVERT_PROBABILITY = 0.05;
 
 /** P(the variant moves the metric the way the spec expects). */
-export function probabilityExpected(stats: BucketStats, spec: Pick<ExperimentSpec, 'expectedEffect'>): number {
+export function probabilityExpected(stats: Pick<BucketStats, 'baseline' | 'variant'>, spec: Pick<ExperimentSpec, 'expectedEffect'>): number {
 	const p = probabilityBetter(stats.baseline, stats.variant);
 	return spec.expectedEffect.endsWith(' down') ? 1 - p : p;
 }
