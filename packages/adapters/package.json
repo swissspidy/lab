@@ -10,6 +10,8 @@
 	},
 	"dependencies": {
 		"@lab/core": "0.0.0",
+		"@playwright/test": "1.63.0",
+		"@swissspidy/assay": "github:swissspidy/assay#7c04784fbc484ac25ef71cbe3ac202e72019395d",
 		"@swissspidy/graft-core": "^0.1.1"
 	}
 }

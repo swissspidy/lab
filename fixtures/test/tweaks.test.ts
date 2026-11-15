@@ -10,7 +10,7 @@ import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
 import { loadConfig, verifyTweak } from '@lab/core';
 import type { LabConfig, Tweak, TweakOutcome } from '@lab/core';
-import { GraftSpecCheck } from '@lab/adapters';
+import { GraftSpecCheck, assayInvariant } from '@lab/adapters';
 import { CssInjectingProxy, LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
 
@@ -51,7 +51,7 @@ describe('personal tweaks on the fixture site', { concurrency: 3 }, () => {
 				site: { dir: site, commit: 'fixture' },
 				sandbox: new LocalSandbox({ config, scratch }),
 				injector: new CssInjectingProxy(),
-				verifier: new BrowserVerifier({ config, siteDir: site, browser }),
+				verifier: new BrowserVerifier({ config, siteDir: site, browser, invariantKinds: [assayInvariant] }),
 				evidenceDir: join(scratch, 'evidence'),
 				specCheck: new GraftSpecCheck(),
 			},

@@ -149,11 +149,46 @@ passes the same suite in the same run:
 | Gate | Checks |
 | --- | --- |
 | Static | patch format, scope and size; site check and build; bundle size; numbers, names, links, forms and pages unchanged |
-| Invariants | the site's own `lab/invariants/*.ts`, at every viewport |
+| Invariants | the site's own `lab/invariants/*.ts`, at every viewport: Playwright scripts, or Assay invariants with locked checks mined from the baseline |
 | Budgets | aXe, console errors, failed requests, new origins, overflow, LCP, CLS, page status, dead links |
 | Acceptance | the experiment's own checks, written as data with the spec |
 
 `npm run check` runs lint, typecheck and all tests.
+
+### Assay invariants
+
+A hand-written invariant checks what its author thought to assert. An Assay
+invariant states the task and the outcome in words, with a run that does the
+task and runs that must not pass:
+
+```ts
+import type { AssayInvariantSpec } from '@lab/adapters';
+
+export default {
+	id: 'signup-submits',
+	description: 'The signup form subscribes an email address and confirms it',
+	assay: {
+		task: {
+			instruction: 'Subscribe reader@example.com to the release notes with the signup form.',
+			outcomes: '- The page shows "Thanks. We will send release notes to reader@example.com."',
+		},
+		checks: 'signup-submits.checks.json',
+		act: (ctx) => subscribe(ctx, 'reader@example.com'),
+		negatives: { 'not-submitted': (ctx) => subscribe(ctx, 'reader@example.com', false) },
+	},
+} satisfies AssayInvariantSpec;
+```
+
+`lab invariants compile` builds the baseline, runs each Assay invariant's
+task and negatives there, and has Assay mine checks that pass on the task and
+fail on every negative, with no model. It stress-tests them (valid variations
+of the page must pass, broken evidence must fail), locks them, and writes the
+check set next to the invariant. Review the diff and commit it. Verify then
+does the task on both sites and evaluates the locked checks; a check set
+edited after it was locked fails, and so does an outcome Assay cannot decide.
+`lab doctor` reports a missing or broken lock (`invariant-lock-broken`).
+
+Assay is installed from a git commit until it is published to npm.
 
 ## Personal tweaks
 
@@ -195,7 +230,7 @@ experiment, so a personal view cannot skew a result.
   the `ModelProvider` they use.
 - `packages/deploy`: the reference deployer, edge server, beacon and meter.
 - `packages/report`: the static ledger viewer.
-- `packages/adapters`: adapters to Graft (and later Sandburg and Assay).
+- `packages/adapters`: adapters to Graft (spec format) and Assay (invariants).
 - `packages/next`: `@lab/next`, the proxy helper and beacon for Next.js sites.
 - `packages/cli`: the `lab` command.
 - `action.yml`: the GitHub Action.
