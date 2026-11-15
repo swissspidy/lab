@@ -3,6 +3,10 @@
 //   POST /beacon   one beacon, counted per experiment, bucket and interval
 //   PUT  /state    with the token: the loop's deployer and kill switch write here
 //   GET  /metrics  with the token: the loop's meter reads the counts
+//   PUT  /tweaks/<id>       with the token: the lab stores a verified personal tweak
+//   GET  /tweaks/<id>.json  with the token: the stored record
+//   GET  /tweaks/<id>.css   public (and HEAD): the tweak's stylesheet, which the proxy forwards
+// The tweak routes exist only when the site offers tweaks (`tweaks` in the config).
 // The site's proxy reads /state and forwards beacons; visitors never talk to it.
 import { createServer } from 'node:http';
 import type { Server } from 'node:http';
@@ -12,6 +16,8 @@ import { parseDeployState, readState, stateVersion, writeState } from './deploye
 import type { DeployState } from './deployer.ts';
 import { recordBeacon } from './edge.ts';
 import type { MetricStore } from './metrics.ts';
+import { FileTweakStore } from './tweaks.ts';
+import type { LabConfig } from '@lab/core';
 
 export interface CollectorOptions {
 	/** The deploy state directory (state.json), as written by the deployer and `lab kill`. */
@@ -25,7 +31,11 @@ export interface CollectorOptions {
 	 * the state can then only change on this machine (`lab kill`, the deployer).
 	 */
 	token?: string;
+	/** The site's `tweaks` config. Absent: no tweak routes. */
+	tweaks?: LabConfig['tweaks'];
 }
+
+const TWEAK_PATH = /^\/tweaks\/(tw-[0-9a-f]{12})(\.css|\.json)?$/;
 
 export async function startCollector(options: CollectorOptions): Promise<{ url: string; server: Server; close(): Promise<void> }> {
 	const now = options.now ?? (() => new Date());
@@ -35,8 +45,45 @@ export async function startCollector(options: CollectorOptions): Promise<{ url: 
 		const wanted = Buffer.from(`Bearer ${options.token}`);
 		return given.length === wanted.length && timingSafeEqual(given, wanted);
 	};
+	const tweaks = options.tweaks ? new FileTweakStore(options.root, { tweaks: options.tweaks }) : null;
 	const server = createServer((req, res) => {
 		const path = new URL(req.url ?? '/', 'http://collector').pathname;
+		const tweak = TWEAK_PATH.exec(path);
+		if (tweak && tweaks) {
+			const [, id, ext] = tweak as unknown as [string, string, string | undefined];
+			if (req.method === 'PUT' && ext === undefined) {
+				if (!authorized(req.headers.authorization)) return void res.writeHead(401).end();
+				let body = '';
+				req.on('data', (chunk: Buffer) => {
+					body += chunk.toString();
+					if (body.length > 200_000) req.destroy();
+				});
+				req.on('end', () => {
+					let record: unknown = null;
+					try {
+						record = JSON.parse(body);
+					} catch {}
+					const named = (record as { spec?: { id?: unknown } } | null)?.spec?.id;
+					if (named !== id) return void res.writeHead(400).end();
+					tweaks.put(record as never).then(
+						() => res.writeHead(204).end(),
+						() => res.writeHead(400).end(),
+					);
+				});
+				return;
+			}
+			// HEAD too: the proxy asks whether a tweak exists before a visitor opts in.
+			if ((req.method === 'GET' || req.method === 'HEAD') && ext !== undefined) {
+				if (ext === '.json' && !authorized(req.headers.authorization)) return void res.writeHead(401).end();
+				void tweaks.get(id).then((record) => {
+					if (!record) return res.writeHead(404).end();
+					if (ext === '.json') return res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(record));
+					return res.writeHead(200, { 'content-type': 'text/css; charset=utf-8', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' }).end(record.css);
+				});
+				return;
+			}
+			return void res.writeHead(405).end();
+		}
 		if (path === '/state' && req.method === 'PUT') {
 			if (!authorized(req.headers.authorization)) return void res.writeHead(401).end();
 			let body = '';

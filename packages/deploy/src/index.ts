@@ -11,3 +11,4 @@ export type { EdgeOptions } from './edge.ts';
 export { BUCKETS, EVENTS, MetricStore, SITE, emptyCounts } from './metrics.ts';
 export type { BeaconEvent, Bucket } from './metrics.ts';
 export { StoreMeter, guardrailZ } from './meter.ts';
+export { FileTweakStore, RemoteTweakStore } from './tweaks.ts';

@@ -5,6 +5,21 @@ export const COOKIE_VISITOR = 'lab_vid';
 export const COOKIE_EXPERIMENT = 'lab_exp';
 export const COOKIE_BUCKET = 'lab_bucket';
 export const BEACON_PATH = '/_lab/beacon';
+/** The visitor's personal tweaks, as a comma-separated list of ids. Readable by the page's script. */
+export const COOKIE_TWEAKS = 'lab_tweaks';
+/** `GET /_lab/tweak/<id>` opts in (`?off` opts out; `/_lab/tweak/off` drops every tweak). */
+export const TWEAK_OPT_IN = '/_lab/tweak/';
+/** `GET /_lab/tweaks/<id>.css` serves a tweak's stylesheet from the lab. */
+export const TWEAK_CSS = '/_lab/tweaks/';
+export const MAX_TWEAKS = 5;
+const TWEAK_ID = /^tw-[0-9a-f]{12}$/;
+
+/** The valid tweak ids in a cookie value, at most MAX_TWEAKS, without repeats. */
+export function parseTweaks(cookie: string | undefined): string[] {
+	return [...new Set((cookie ?? '').split(',').filter((id) => TWEAK_ID.test(id)))].slice(0, MAX_TWEAKS);
+}
+
+export const isTweakId = (id: string): boolean => TWEAK_ID.test(id);
 
 export type Bucket = 'baseline' | 'variant';
 
@@ -59,11 +74,16 @@ export function parseState(value: unknown): LabState {
 	return { live: { experiment, share, ...(typeof origin === 'string' ? { origin } : {}) } };
 }
 
-export function route(visitorCookie: string | undefined, state: LabState): RouteDecision {
+/**
+ * `tweaked`: the visitor has personal tweaks. They are left out of any
+ * experiment (baseline, no experiment id): their view is their own, and
+ * counting it would skew the comparison.
+ */
+export function route(visitorCookie: string | undefined, state: LabState, tweaked = false): RouteDecision {
 	const newVisitor = !visitorCookie || !VISITOR.test(visitorCookie);
 	const visitor = newVisitor ? newVisitorId() : visitorCookie!;
 	const live = state.live;
-	if (!live) return { visitor, newVisitor, experiment: null, bucket: 'baseline', rewriteTo: null };
+	if (!live || tweaked) return { visitor, newVisitor, experiment: null, bucket: 'baseline', rewriteTo: null };
 	const bucket = assignBucket(visitor, live.experiment, live.share);
 	// A variant with no origin to serve it from cannot be shown: serve the baseline.
 	const rewriteTo = bucket === 'variant' && live.origin ? live.origin : null;

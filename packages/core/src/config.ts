@@ -77,6 +77,7 @@ export function validateConfig(raw: unknown): ConfigResult {
 		traffic: { share: 'number', minSamplesPerBucket: 'number', maxDays: 'number', intervalHours: 'number?', minDetectableEffect: 'number?' },
 		rollback: { jsErrorMargin: 'number?', bounceMargin: 'number?', minVisits: 'number?' },
 		deploy: { publish: 'string', retire: 'string?', env: 'string[]?' },
+		tweaks: { maxBytes: 'number?' },
 		limits: { maxChangedLines: 'number', maxFiles: 'number' },
 		viewports: 'viewport[]',
 		autonomy: 'string',
@@ -169,6 +170,9 @@ export function validateConfig(raw: unknown): ConfigResult {
 	// so the routes to verify must be listed.
 	if (config.site.serve !== undefined && !config.site.pages?.length) {
 		error('config-pages-required', 'site.pages', 'A server app (`site.serve`) needs `site.pages`: the routes to verify, such as `[".", "docs", "pricing"]`.');
+	}
+	if (config.tweaks?.maxBytes !== undefined && !(Number.isInteger(config.tweaks.maxBytes) && config.tweaks.maxBytes > 0 && config.tweaks.maxBytes <= 65_536)) {
+		error('config-tweaks', 'tweaks.maxBytes', '`tweaks.maxBytes` must be a whole number of bytes from 1 to 65536.');
 	}
 	if (config.metric.kind !== 'conversion') {
 		error('config-metric-kind', 'metric.kind', 'v0 supports only `conversion` metrics: a binary outcome per visit.');

@@ -103,4 +103,35 @@ describe('lab run, approve, status, kill', () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it('tweak verifies a personal tweak and stores it where the collector serves it', { timeout: 120_000 }, async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-tweak-'));
+		try {
+			cpSync(join(fixtures, 'site'), dir, { recursive: true, filter: (src) => !src.includes('/dist') && !src.includes('/.lab') });
+			const spec = { intent: 'A larger main heading.', acceptance: ['The heading shows.'], mount: 'site', permissions: ['style:write'], checks: [{ criterion: 0, page: 'index.html', expect: [{ expect: 'visible', target: { css: 'h1' } }] }] };
+			writeFileSync(join(dir, 'tweak.json'), JSON.stringify(spec));
+			writeFileSync(join(dir, 'ok.css'), '.hero h1 { letter-spacing: -0.02em; }');
+			writeFileSync(join(dir, 'bad.css'), '.hero h1::after { content: "50% off" }');
+
+			let r = await lab('tweak', dir, '--spec', join(dir, 'tweak.json'));
+			assert.equal(r.code, 64, 'needs --css with --spec');
+			r = await lab('tweak', dir, '--spec', join(dir, 'tweak.json'), '--css', join(dir, 'bad.css'));
+			assert.equal(r.code, 1, r.stdout + r.stderr);
+			assert.match(r.stdout, /static\.tweak-css/);
+			r = await lab('tweak', dir, '--spec', join(dir, 'tweak.json'), '--css', join(dir, 'ok.css'));
+			assert.equal(r.code, 0, r.stdout + r.stderr);
+			const id = /^(tw-[0-9a-f]{12}): verified/m.exec(r.stdout)?.[1];
+			assert.ok(id, r.stdout);
+			assert.match(r.stdout, new RegExp(`/_lab/tweak/${id}`));
+			const stored = JSON.parse(readFileSync(join(dir, '.lab', 'host', 'tweaks', `${id}.json`), 'utf8'));
+			assert.equal(stored.css, '.hero h1 { letter-spacing: -0.02em; }');
+
+			writeFileSync(join(dir, 'lab.config.ts'), readFileSync(join(dir, 'lab.config.ts'), 'utf8').replace('tweaks: {},', ''));
+			r = await lab('tweak', dir, '--spec', join(dir, 'tweak.json'), '--css', join(dir, 'ok.css'));
+			assert.equal(r.code, 3);
+			assert.match(r.stderr, /tweaks-disabled/);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });

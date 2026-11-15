@@ -226,6 +226,11 @@ export interface LabConfig {
 	 * variables named in `env` (deploy tokens).
 	 */
 	deploy?: { publish: string; retire?: string; env?: string[] };
+	/**
+	 * Personal tweaks: visitors may restyle the site for themselves. Absent,
+	 * the site offers none. `maxBytes` caps a tweak's CSS (default 16384).
+	 */
+	tweaks?: { maxBytes?: number };
 }
 
 export const LEDGER_EVENT_TYPES = [
@@ -318,6 +323,48 @@ export interface Sandbox {
  */
 export interface SpecCheck {
 	check(spec: ExperimentSpec, host: WebsiteHost): Diagnostic[] | Promise<Diagnostic[]>;
+}
+
+/**
+ * A personal tweak: a visitor's own restyling of a site, as a Graft spec
+ * for host `website` that may only change styles. It is verified like a
+ * variant, then served to the visitors who opt in, and never measured.
+ */
+export interface TweakSpec {
+	/** `tw-` and twelve hex digits; unguessable enough to share as a link. */
+	id: string;
+	/** One sentence: what changes for the visitor. */
+	intent: string;
+	acceptance: string[];
+	/** Where the change shows: `site` or a page slot. */
+	mount: string;
+	/** Always exactly `['style:write']`. */
+	permissions: string[];
+	checks: AcceptanceCheck[];
+}
+
+export interface Tweak {
+	spec: TweakSpec;
+	/** The stylesheet, added after the site's own. */
+	css: string;
+}
+
+/** A tweak the lab verified, as the collector stores and serves it. */
+export interface TweakRecord extends Tweak {
+	verifiedAt: string;
+	siteCommit: string;
+	/** Check ids that ran and passed. */
+	checks: string[];
+}
+
+/** Serves a running site with extra CSS in every HTML page, for verifying a tweak. */
+export interface CssInjector {
+	inject(site: RunningSite, css: string): Promise<RunningSite>;
+}
+
+export interface TweakStore {
+	put(record: TweakRecord): Promise<void>;
+	get(id: string): Promise<TweakRecord | null>;
 }
 
 export interface Verifier {

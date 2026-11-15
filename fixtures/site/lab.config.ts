@@ -8,4 +8,6 @@ export default {
 	budgets: { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 20 },
 	traffic: { share: 0.1, minSamplesPerBucket: 1000, maxDays: 14 },
 	autonomy: 'gated',
+	// Visitors may restyle the site for themselves (personal tweaks).
+	tweaks: {},
 };

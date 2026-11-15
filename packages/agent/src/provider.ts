@@ -7,7 +7,7 @@ export interface ModelRequest {
 	/** The task, with the site's files and the ledger history as data. */
 	prompt: string;
 	/** What the request is for, so scripted providers can answer by kind. */
-	kind: 'propose' | 'build';
+	kind: 'propose' | 'build' | 'tweak';
 }
 
 /** The only way the lab reaches a model. Tests use `ScriptedProvider`, so CI needs no key. */
@@ -81,8 +81,8 @@ export class ScriptedProvider implements ModelProvider {
 	readonly requests: ModelRequest[] = [];
 	private readonly queues: Record<ModelRequest['kind'], Script[]>;
 
-	constructor(script: { propose?: Script[]; build?: Script[] }) {
-		this.queues = { propose: [...(script.propose ?? [])], build: [...(script.build ?? [])] };
+	constructor(script: { propose?: Script[]; build?: Script[]; tweak?: Script[] }) {
+		this.queues = { propose: [...(script.propose ?? [])], build: [...(script.build ?? [])], tweak: [...(script.tweak ?? [])] };
 	}
 
 	async complete(request: ModelRequest): Promise<string> {

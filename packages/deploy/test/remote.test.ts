@@ -5,7 +5,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { StageError, hashPatch, validateConfig } from '@lab/core';
 import type { LabConfig } from '@lab/core';
-import { CommandPublisher, MetricStore, OriginDeployer, RemoteMeter, RemoteState, readState, startCollector } from '../src/index.ts';
+import { CommandPublisher, FileTweakStore, MetricStore, OriginDeployer, RemoteMeter, RemoteState, RemoteTweakStore, readState, startCollector } from '../src/index.ts';
 
 const configWith = (deploy?: object): LabConfig =>
 	validateConfig({
@@ -178,6 +178,69 @@ describe('readState', () => {
 				write(bad);
 				assert.equal(readState(dir).live, null, JSON.stringify(bad));
 			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe('personal tweaks in the collector', () => {
+	const record = (over: Record<string, unknown> = {}, css = 'h1 { font-size: 3rem }') => ({
+		spec: { id: 'tw-0123456789ab', intent: 'Bigger headings.', acceptance: ['The heading shows.'], mount: 'site', permissions: ['style:write'], checks: [{ criterion: 0, page: 'index.html', expect: [{ expect: 'visible', target: { css: 'h1' } }] }], ...over },
+		css,
+		verifiedAt: '2026-11-15T10:00:00.000Z',
+		siteCommit: 'c0ffee',
+		checks: ['acceptance.0'],
+	});
+
+	it('stores a verified tweak with the token, serves its CSS to anyone, and the record only with the token', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
+		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token', tweaks: {} });
+		try {
+			const put = (body: unknown, token = 'secret-token', id = 'tw-0123456789ab') =>
+				fetch(`${collector.url}/tweaks/${id}`, { method: 'PUT', headers: { authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+			assert.equal((await put(record(), 'wrong')).status, 401);
+			assert.equal((await put(record({ permissions: ['markup:write'] }))).status, 400, 'not style-only');
+			assert.equal((await put(record({}, 'a { background: url(https://t.example/x.png) }'))).status, 400, 'CSS that makes a request');
+			assert.equal((await put(record(), 'secret-token', 'tw-ffffffffffff')).status, 400, 'the path names another tweak');
+			assert.equal((await fetch(`${collector.url}/tweaks/tw-0123456789ab.css`)).status, 404);
+			assert.equal((await put(record())).status, 204);
+			const css = await fetch(`${collector.url}/tweaks/tw-0123456789ab.css`);
+			assert.equal(css.headers.get('content-type'), 'text/css; charset=utf-8');
+			assert.equal(css.headers.get('x-content-type-options'), 'nosniff');
+			assert.equal(await css.text(), 'h1 { font-size: 3rem }');
+			assert.equal((await fetch(`${collector.url}/tweaks/tw-0123456789ab.css`, { method: 'HEAD' })).status, 200, 'the proxy asks with HEAD before opting a visitor in');
+			assert.equal((await fetch(`${collector.url}/tweaks/tw-ffffffffffff.css`, { method: 'HEAD' })).status, 404);
+			assert.equal((await fetch(`${collector.url}/tweaks/tw-0123456789ab.json`)).status, 401);
+			const store = new RemoteTweakStore({ url: collector.url, token: 'secret-token', config: { tweaks: {} } });
+			assert.equal((await store.get('tw-0123456789ab'))?.siteCommit, 'c0ffee');
+			assert.equal(await store.get('tw-000000000000'), null);
+		} finally {
+			await collector.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('has no tweak routes when the site offers none', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
+		const collector = await startCollector({ root: dir, store: new MetricStore({ intervalHours: 6 }), token: 'secret-token' });
+		try {
+			const store = new RemoteTweakStore({ url: collector.url, token: 'secret-token', config: { tweaks: {} } });
+			await assert.rejects(store.put(record() as never), (e: unknown) => e instanceof StageError && e.code === 'tweaks-disabled');
+		} finally {
+			await collector.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('a file store refuses a record that does not pass the gate, whoever writes it', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-tweaks-'));
+		try {
+			const store = new FileTweakStore(dir, { tweaks: {} });
+			await assert.rejects(store.put(record({}, 'a::after { content: "FREE" }') as never), (e: unknown) => e instanceof StageError && e.code === 'tweak-record-invalid');
+			await store.put(record() as never);
+			assert.equal((await store.get('tw-0123456789ab'))?.css, 'h1 { font-size: 3rem }');
+			assert.equal(await store.get('../state'), null);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
