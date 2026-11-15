@@ -70,6 +70,17 @@ describe('report', () => {
 		}
 	});
 
+	it('finds evidence recorded relative to the site directory', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
+		try {
+			writeFileSync(join(dir, 'shot.png'), 'png');
+			const file = writeReport(await ledgerWith(dir, 'shot.png'), join(dir, 'out'), { siteDir: dir });
+			assert.match(readFileSync(file, 'utf8'), /<a href="evidence\/0-shot\.png">screenshot<\/a>/);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('copies evidence screenshots next to the page', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
 		try {

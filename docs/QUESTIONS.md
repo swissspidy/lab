@@ -75,3 +75,8 @@ consent and API key questions for now, and make the remaining decisions.
 17. **Promotion from CI.** The action pushes kept changes straight to the
     branch it runs on. Opening a pull request instead would add a human step
     after a keep; say if you want that.
+18. **Personal tweaks as generated CSS.** The brief's v1 has no generated
+    CSS and composes personal views on the device. Pascal decided
+    (2026-11-15) that generated CSS is fine: a tweak is a style-only Graft
+    spec plus its stylesheet, verified like a variant before any visitor
+    gets it. Decided.

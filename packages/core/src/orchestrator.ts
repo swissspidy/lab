@@ -1,7 +1,7 @@
 // One iteration of the loop, from Observe to Verify. Deterministic code:
 // only the Proposer and Builder may call a model. It never ships; see
 // lifecycle.ts for what happens after Verify.
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { checkPatch, hashPatch } from './patch.ts';
 import { validateSpec } from './spec.ts';
 import { StageError } from './types.ts';
@@ -51,7 +51,7 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 	const { config, site, ledger } = deps;
 	const events: LedgerEvent[] = [];
 	const append = async (event: Parameters<Ledger['append']>[0]) => {
-		const written = await ledger.append(event);
+		const written = await ledger.append(portableEvidence(event, site.dir));
 		events.push(written);
 		return written;
 	};
@@ -175,4 +175,28 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 	} finally {
 		await Promise.allSettled(running.map((s) => s.stop()));
 	}
+}
+
+/**
+ * Evidence files inside the site directory are recorded relative to it, so a
+ * ledger stays valid when the site moves (a CI checkout, a clone elsewhere)
+ * and two runs of the same thing write the same ledger.
+ */
+function portableEvidence<E extends Parameters<Ledger['append']>[0]>(event: E, siteDir: string): E {
+	const payload = event.payload as { failures?: CheckResult[]; results?: CheckResult[] };
+	if (!Array.isArray(payload.failures) && !Array.isArray(payload.results)) return event;
+	const local = (r: CheckResult): CheckResult => {
+		const shot = r.evidence?.screenshot;
+		if (!shot || !isAbsolute(shot)) return r;
+		const rel = relative(siteDir, shot);
+		return rel.startsWith('..') || isAbsolute(rel) ? r : { ...r, evidence: { ...r.evidence, screenshot: rel } };
+	};
+	return {
+		...event,
+		payload: {
+			...payload,
+			...(payload.failures ? { failures: payload.failures.map(local) } : {}),
+			...(payload.results ? { results: payload.results.map(local) } : {}),
+		},
+	};
 }

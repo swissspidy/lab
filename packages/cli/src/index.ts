@@ -304,7 +304,7 @@ async function main(argv: string[]): Promise<number> {
 			return 0;
 		}
 		case 'report': {
-			const file = writeReport(await ledger.history(), resolve(values.out ?? resolve(siteDir, 'lab', 'report')), { title: `Lab report: ${siteDir.split('/').at(-1)}` });
+			const file = writeReport(await ledger.history(), resolve(values.out ?? resolve(siteDir, 'lab', 'report')), { title: `Lab report: ${siteDir.split('/').at(-1)}`, siteDir });
 			process.stdout.write(`Wrote ${file}\n`);
 			return 0;
 		}

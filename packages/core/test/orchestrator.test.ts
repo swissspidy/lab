@@ -165,6 +165,19 @@ describe('runIteration', () => {
 		assert.deepEqual(result.failures.map((f) => f.check), ['budgets.axe']);
 	});
 
+	it('records evidence inside the site relative to it, and leaves other paths as they are', async () => {
+		const failing = [
+			{ gate: 'invariants' as const, check: 'invariants.x', passed: false, message: 'x', evidence: { screenshot: join(dir, 'lab', 'evidence', 'shot.png') } },
+			{ gate: 'invariants' as const, check: 'invariants.y', passed: false, message: 'y', evidence: { screenshot: '/elsewhere/shot.png' } },
+		];
+		const d = deps({ verdict: report({ passed: false, results: failing }) });
+		const result = await runIteration(d);
+		const event = (await d.ledger.history()).at(-1)!;
+		const shots = (event.payload as { failures: Array<{ evidence?: { screenshot?: string } }> }).failures.map((f) => f.evidence?.screenshot);
+		assert.deepEqual(shots, [join('lab', 'evidence', 'shot.png'), '/elsewhere/shot.png']);
+		assert.equal(result.failures[0]!.evidence?.screenshot, join(dir, 'lab', 'evidence', 'shot.png'), 'the result keeps the path to open now');
+	});
+
 	it('records an invalid spec as proposed, then aborted', async () => {
 		const d = deps({ proposer: { propose: async () => ({ ...spec(), checks: [] }) } });
 		const result = await runIteration(d);
