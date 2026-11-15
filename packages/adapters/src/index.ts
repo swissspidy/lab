@@ -5,4 +5,4 @@
 // dev servers inside its own browser and returns no URL; Assay is not
 // published and has no aXe, console or Lighthouse checks. The built-in
 // sandbox and verifier stand in for them.
-export { GraftSpecProposer, fromGraftMarkdown, recordingGraftSpecs, toGraftMarkdown } from './graft.ts';
+export { GraftSpecCheck, GraftSpecProposer, fromGraftMarkdown, graftSurface, recordingGraftSpecs, toGraftMarkdown } from './graft.ts';

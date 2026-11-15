@@ -1,0 +1,179 @@
+// The website as a host, in Graft's terms (Graft ADR 0015). A spec mounts
+// on a slot (the whole site, or one page) and asks for permission scopes
+// (kinds of files it may change). The slots and scopes come from the site
+// itself: its pages and its allowed files. This module knows nothing of
+// Graft; the Graft adapter turns a WebsiteHost into a Graft surface.
+import { createHash } from 'node:crypto';
+import { lstatSync, readdirSync, statSync } from 'node:fs';
+import { extname, join, posix, relative, sep } from 'node:path';
+import { effectiveDeny } from './config.ts';
+import { matchesAny } from './glob.ts';
+import { StageError } from './types.ts';
+import type { LabConfig } from './types.ts';
+
+/** Every scope a website can offer, and the file extensions each one covers. */
+export const WEBSITE_SCOPES = {
+	'markup:write': {
+		title: 'Change markup and components',
+		description: 'Pages, templates and UI components: HTML, JSX, TSX, Vue, Svelte, Astro.',
+		extensions: ['.html', '.htm', '.jsx', '.tsx', '.vue', '.svelte', '.astro'],
+	},
+	'style:write': {
+		title: 'Change styles',
+		description: 'Stylesheets: CSS, Sass, Less.',
+		extensions: ['.css', '.scss', '.sass', '.less'],
+	},
+	'content:write': {
+		title: 'Change content files',
+		description: 'Text and data the site renders: Markdown, MDX, JSON, YAML, plain text.',
+		extensions: ['.md', '.mdx', '.json', '.yaml', '.yml', '.txt'],
+	},
+	'script:write': {
+		title: 'Change scripts',
+		description: 'JavaScript and TypeScript modules that are not components.',
+		extensions: ['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'],
+	},
+	'asset:write': {
+		title: 'Change images',
+		description: 'SVG images. Binary files are never allowed in a variant.',
+		extensions: ['.svg'],
+	},
+} as const;
+
+export type WebsiteScope = keyof typeof WEBSITE_SCOPES;
+
+export const isWebsiteScope = (scope: unknown): scope is WebsiteScope => typeof scope === 'string' && Object.hasOwn(WEBSITE_SCOPES, scope);
+
+/** The scope a file needs, or null when no scope covers it (such a file cannot be changed). */
+export function scopeOfPath(path: string): WebsiteScope | null {
+	const ext = extname(path).toLowerCase();
+	for (const [scope, { extensions }] of Object.entries(WEBSITE_SCOPES)) {
+		if ((extensions as readonly string[]).includes(ext)) return scope as WebsiteScope;
+	}
+	return null;
+}
+
+/** The slot for the whole site: shared layout, navigation, styles. */
+export const SITE_SLOT = 'site';
+
+/** A mount slot: `site`, or `page.<route>` with dot-separated segments. */
+export const SLOT = /^(?:site|page(?:\.[a-z][a-z0-9-]*)+)$/;
+
+/**
+ * A page's route: `docs.html`, `docs` and `docs/index.html` are all `docs`.
+ * The home page (`index.html`, `.`) is the empty route, so it never equals a
+ * directory named `index` (`index/index.html` is the route `index`).
+ */
+export function pageRoute(page: string): string {
+	if (page === '.' || page === './') return '';
+	return page.replace(/^(?:\.\/)+/, '').replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.html$/, '').replace(/(?:^|\/)index$/, '');
+}
+
+/** A segment used as is: lowercase words joined by single dashes, starting with a letter. */
+const PLAIN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+/**
+ * The slot of a page, as checks name pages: `index.html` and `.` are
+ * `page.index`, `docs.html`, `docs` and `docs/index.html` are `page.docs`
+ * (one route), `docs/intro.html` is `page.docs.intro`.
+ *
+ * A slot depends on its own page only, so adding or removing other pages
+ * never renames it. A segment that is not plain, or is `index` (the home
+ * page's slot), is slugged and gets `--`
+ * and the first eight hex digits of its sha256: `About` is
+ * `about--<hash>`, `中文` is `p--<hash>`. A plain segment never contains
+ * `--`, so it cannot look like a hashed one.
+ */
+export function pageSlot(page: string): string {
+	const route = pageRoute(page);
+	if (route === '') return 'page.index';
+	return `page.${route.split('/').map((segment) => {
+		// `index` is the home page's slot, so a segment named `index` is hashed like any other non-plain one.
+		if (PLAIN.test(segment) && segment !== 'index') return segment;
+		const slug = segment.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+		const hash = createHash('sha256').update(segment).digest('hex').slice(0, 8);
+		return `${/^[a-z]/.test(slug) ? slug : `p${slug ? `-${slug}` : ''}`}--${hash}`;
+	}).join('.')}`;
+}
+
+/** What a website offers a spec: its slots and the scopes it has files for. */
+export interface WebsiteHost {
+	/** Slot id → the page it stands for (`null` for `site`). */
+	slots: Record<string, { title: string; page: string | null }>;
+	/** Scope → how many allowed files it covers. Only scopes with at least one file. */
+	scopes: Partial<Record<WebsiteScope, { files: number }>>;
+}
+
+/**
+ * Describes a site as a host: one slot for the whole site and one per page,
+ * and a scope for each kind of file the config allows changing that the
+ * site actually has. Pages come from the verifier's list (config
+ * `site.pages`, or the built HTML files).
+ */
+export function websiteHost(config: LabConfig, files: readonly string[], pages: readonly string[]): WebsiteHost {
+	const slots: WebsiteHost['slots'] = { [SITE_SLOT]: { title: 'The whole site', page: null } };
+	// Pages that are one route (`docs.html` and `docs/index.html`) share a
+	// slot; the first in sorted order is its anchor. Two routes on one slot
+	// would need a hash collision; it is refused, never resolved silently.
+	const routes = new Map<string, string>();
+	for (const page of [...pages].toSorted()) {
+		const slot = pageSlot(page);
+		const route = pageRoute(page);
+		const taken = routes.get(slot);
+		if (taken !== undefined && taken !== route) {
+			throw new StageError('website-slot-collision', `The pages \`${taken}\` and \`${route}\` map to the same slot \`${slot}\`. Rename one of them.`);
+		}
+		routes.set(slot, route);
+		slots[slot] ??= { title: `The page ${page}`, page };
+	}
+	const deny = effectiveDeny(config);
+	const scopes: WebsiteHost['scopes'] = {};
+	for (const file of files) {
+		if (!matchesAny(file, config.allow) || matchesAny(file, deny)) continue;
+		const scope = scopeOfPath(file);
+		if (scope) scopes[scope] = { files: (scopes[scope]?.files ?? 0) + 1 };
+	}
+	return { slots, scopes };
+}
+
+const SKIP = new Set(['node_modules', '.git', 'lab']);
+
+/** The site's source files, as POSIX paths: no build output, dependencies, dotfiles or `lab/`. */
+export function listSiteFiles(dir: string, config: LabConfig): string[] {
+	const outDir = posix.normalize(config.site.outDir.split(sep).join('/')).replace(/\/+$/, '');
+	const out: string[] = [];
+	const walk = (current: string) => {
+		for (const name of readdirSync(current).toSorted()) {
+			const full = join(current, name);
+			const rel = relative(dir, full).split(sep).join('/');
+			const stat = lstatSync(full);
+			if (stat.isSymbolicLink() || name.startsWith('.')) continue;
+			if (stat.isDirectory()) {
+				if (!(SKIP.has(name) && current === dir) && name !== 'node_modules' && rel !== outDir) walk(full);
+			} else if (stat.isFile()) {
+				out.push(rel);
+			}
+		}
+	};
+	walk(dir);
+	return out;
+}
+
+/**
+ * The pages to verify: config `site.pages`, or every HTML file in the built
+ * output, sorted. Without a built root, just `index.html`.
+ */
+export function sitePages(config: LabConfig, root: string | undefined): string[] {
+	if (config.site.pages) return [...config.site.pages];
+	if (!root) return ['index.html'];
+	const out: string[] = [];
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			const path = join(dir, name);
+			if (statSync(path).isDirectory()) walk(path);
+			else if (name.endsWith('.html')) out.push(relative(root, path).split(sep).join('/'));
+		}
+	};
+	walk(root);
+	return out.toSorted();
+}

@@ -9,6 +9,10 @@
 	"touches": [
 		"app/page.jsx"
 	],
+	"mount": "page.index",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

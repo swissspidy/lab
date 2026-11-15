@@ -1,5 +1,6 @@
 // The lab's contract. Every stage is an interface with one default
 // implementation; stages meet only through the types in this file.
+import type { WebsiteHost } from './website.ts';
 
 /** Where a hypothesis came from. Only `agent` exists in v0; `visitors` is v1's morph clusters. */
 export type HypothesisSource = 'agent' | 'visitors';
@@ -16,6 +17,17 @@ export interface ExperimentSpec {
 	expectedEffect: string;
 	/** Paths the change is expected to touch. The scope check reads the patch, not this list. */
 	touches: string[];
+	/**
+	 * Where the change shows: `site`, or the slot of one page (`page.index`,
+	 * `page.docs`). Mirrors a Graft spec's `mount.slot`.
+	 */
+	mount: string;
+	/**
+	 * The kinds of files the change may touch (`markup:write`, `style:write`,
+	 * ...). Mirrors a Graft spec's permissions; the static gate rejects a
+	 * patch that changes a file no listed scope covers.
+	 */
+	permissions: string[];
 	source: HypothesisSource;
 	/**
 	 * Checks for the acceptance criteria, written with the spec, before the
@@ -275,6 +287,15 @@ export interface Builder {
 
 export interface Sandbox {
 	start(ref: RepoRef | Variant): Promise<RunningSite>;
+}
+
+/**
+ * Checks a spec against what the site offers, once that is known (after the
+ * baseline is built). The Graft adapter implements it with Graft's own
+ * validator.
+ */
+export interface SpecCheck {
+	check(spec: ExperimentSpec, host: WebsiteHost): Diagnostic[];
 }
 
 export interface Verifier {

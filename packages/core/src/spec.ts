@@ -1,9 +1,12 @@
 import type { Diagnostic, ExperimentSpec, LabConfig, LedgerEvent } from './types.ts';
+import { SLOT, WEBSITE_SCOPES, isWebsiteScope } from './website.ts';
 
 const ID = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
 type Raw = Record<string, unknown>;
 const isObject = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** A value for a message: strings as they are, anything else by its type, never through its own toString. */
+const show = (v: unknown): string => (typeof v === 'string' ? v : `(${v === null ? 'null' : typeof v})`);
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 
 function validTarget(t: unknown): boolean {
@@ -28,7 +31,7 @@ function stepProblem(s: unknown): string | null {
 		case 'goto':
 			return validPage(s.page) && Object.keys(s).length === 2 ? null : 'a `goto` step needs a relative `page`';
 		default:
-			return `unknown step \`${String(s.do)}\``;
+			return `unknown step \`${show(s.do)}\``;
 	}
 }
 
@@ -58,7 +61,7 @@ function assertionProblem(a: unknown): string | null {
 		case 'url':
 			return only('endsWith') && isText(a.endsWith) ? null : '`url` needs `endsWith`';
 		default:
-			return `unknown assertion \`${String(a.expect)}\``;
+			return `unknown assertion \`${show(a.expect)}\``;
 	}
 }
 
@@ -78,7 +81,7 @@ export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEve
 		error('spec-not-object', '', 'A spec must be a JSON object.');
 		return { spec: null, diagnostics };
 	}
-	const allowed = new Set(['id', 'hypothesis', 'intent', 'acceptance', 'expectedEffect', 'touches', 'source', 'checks']);
+	const allowed = new Set(['id', 'hypothesis', 'intent', 'acceptance', 'expectedEffect', 'touches', 'mount', 'permissions', 'source', 'checks']);
 	for (const key of Object.keys(raw)) if (!allowed.has(key)) error('spec-unknown-key', key, `Unknown key \`${key}\`.`);
 	if (typeof raw.id !== 'string' || !ID.test(raw.id)) error('spec-id', 'id', '`id` must look like `exp-0007`: lowercase letters, digits and dashes.');
 	for (const key of ['hypothesis', 'intent'] as const) if (!isText(raw[key])) error('spec-missing-text', key, `\`${key}\` must be a non-empty sentence.`);
@@ -90,6 +93,15 @@ export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEve
 		error('spec-effect', 'expectedEffect', `\`expectedEffect\` must be \`${config.metric.id} up\` or \`${config.metric.id} down\`.`);
 	}
 	if (!Array.isArray(raw.touches) || !raw.touches.every(isText)) error('spec-touches', 'touches', '`touches` must list the paths the change touches.');
+	if (typeof raw.mount !== 'string' || !SLOT.test(raw.mount)) error('spec-mount', 'mount', '`mount` must be `site`, or the slot of one page, such as `page.index` or `page.docs`.');
+	if (!Array.isArray(raw.permissions) || raw.permissions.length === 0) {
+		error('spec-permissions', 'permissions', `\`permissions\` must list the kinds of files the change touches: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
+	} else {
+		for (const [i, scope] of raw.permissions.entries()) {
+			if (!isWebsiteScope(scope)) error('spec-permission-unknown', `permissions.${i}`, `Unknown permission \`${show(scope)}\`. Available: ${Object.keys(WEBSITE_SCOPES).join(', ')}.`);
+		}
+		if (new Set(raw.permissions).size !== raw.permissions.length) error('spec-permissions', 'permissions', '`permissions` lists a scope twice.');
+	}
 	if (raw.source !== 'agent' && raw.source !== 'visitors') error('spec-source', 'source', '`source` must be `agent` or `visitors`.');
 	if (!Array.isArray(raw.checks)) {
 		error('spec-checks', 'checks', '`checks` must list acceptance checks.');

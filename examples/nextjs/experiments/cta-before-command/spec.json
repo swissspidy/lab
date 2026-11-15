@@ -10,6 +10,10 @@
 	"touches": [
 		"components/Install.jsx"
 	],
+	"mount": "page.index",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

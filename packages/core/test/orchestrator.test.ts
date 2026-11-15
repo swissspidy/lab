@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { FileLedger, StageError, hashPatch, runIteration, validateConfig } from '../src/index.ts';
-import type { ExperimentSpec, IterationDeps, RunningSite, VerifyReport } from '../src/index.ts';
+import type { ExperimentSpec, IterationDeps, RunningSite, SpecCheck, VerifyReport, WebsiteHost } from '../src/index.ts';
 
 const config = validateConfig({
 	site: { repo: '.', build: 'b', outDir: 'dist' },
@@ -22,6 +22,8 @@ const spec = (id = 'exp-0001'): ExperimentSpec => ({
 	acceptance: ['The heading changed.'],
 	expectedEffect: 'next_step_click up',
 	touches: ['src/a.html'],
+	mount: 'page.index',
+	permissions: ['markup:write'],
 	source: 'agent',
 	checks: [{ criterion: 0, page: 'index.html', expect: [{ expect: 'visible', target: { css: 'h1' } }] }],
 });
@@ -74,9 +76,59 @@ describe('runIteration', () => {
 		const d = deps({ patch: PATCH.replaceAll('src/a.html', 'package.json') });
 		const result = await runIteration(d);
 		assert.equal(result.outcome, 'verify_failed');
-		assert.deepEqual(result.failures.map((f) => f.check), ['static.scope']);
+		// Outside allow, and a kind of file (content:write) the spec did not ask for.
+		assert.deepEqual(result.failures.map((f) => f.check), ['static.scope', 'static.permissions']);
 		assert.deepEqual(started, []);
 		assert.equal(verified, 0);
+	});
+
+	it('rejects a patch that changes a kind of file the spec has no permission for', async () => {
+		const d = deps({ proposer: { propose: async () => ({ ...spec(), permissions: ['style:write'] }) } });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'verify_failed');
+		assert.deepEqual(result.failures.map((f) => f.check), ['static.permissions']);
+		assert.deepEqual(started, []);
+	});
+
+	it('checks the spec against the site once the baseline is built, and aborts before the variant starts', async () => {
+		mkdirSync(join(dir, 'src'));
+		writeFileSync(join(dir, 'src', 'a.html'), '<h1>a</h1>');
+		let seen: WebsiteHost | null = null;
+		const specCheck: SpecCheck = {
+			check: (s, host) => {
+				seen = host;
+				return host.slots[s.mount] ? [] : [{ code: 'mount-unknown', severity: 'error', message: `No slot ${s.mount}.` }];
+			},
+		};
+		const ok = await runIteration(deps({ specCheck }));
+		assert.equal(ok.outcome, 'verify_passed');
+		assert.deepEqual(seen!.slots, { site: { title: 'The whole site', page: null }, 'page.index': { title: 'The page index.html', page: 'index.html' } });
+		assert.deepEqual(seen!.scopes, { 'markup:write': { files: 1 } });
+
+		started = [];
+		const d = deps({ specCheck, proposer: { propose: async () => ({ ...spec('exp-0002'), mount: 'page.blog' }) } });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /mount-unknown/);
+		assert.deepEqual(started, ['baseline']);
+		assert.equal((await d.ledger.history()).at(-1)!.payload.stage, 'spec');
+	});
+
+	it('records an aborted iteration when the spec check itself throws', async () => {
+		const specCheck: SpecCheck = {
+			check: () => {
+				throw new StageError('surface-broken', 'The surface could not be built.');
+			},
+		};
+		const d = deps({ specCheck });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /surface-broken/);
+		const last = (await d.ledger.history()).at(-1)!;
+		assert.equal(last.type, 'aborted');
+		assert.equal(last.payload.stage, 'spec');
+		assert.deepEqual(started, ['baseline']);
+		assert.equal(stopped, 1);
 	});
 
 	it('names static.build when the variant does not build', async () => {

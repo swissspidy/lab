@@ -1,5 +1,60 @@
 # Progress
 
+## After M5: the website as a Graft host (2026-11-15)
+
+Pascal asked whether the lab now follows Graft's principles. Partly: specs
+and checks did, but Graft could not validate a lab spec, and a variant was
+limited only by the site's allow and deny lists. Graft's ADR 0015 now
+defines host `website`, implemented here.
+
+**Built**
+
+- `ExperimentSpec` gains `mount` (`site` or `page.<route>`) and
+  `permissions` (`markup:write`, `style:write`, `content:write`,
+  `script:write`, `asset:write`). `validateSpec` requires both
+  (`spec-mount`, `spec-permissions`, `spec-permission-unknown`).
+- `websiteHost()` in `@lab/core` describes a site as a host without
+  Graft: a slot for the site and one per verified page, and a scope for
+  each kind of file the config lets variants change that the site has.
+  `sitePages()` moved there from the verifier, so both agree on the pages.
+- The static gate's new `static.permissions` check: every changed file
+  must be of a kind the spec's permissions cover; a file no scope covers
+  (a shell script, a binary) is always refused.
+- The model builder shows only the files the spec's permissions cover as
+  editable, and refuses edits to others before making a patch.
+- `@lab/adapters`: specs are written and read as plain Graft specs
+  (frontmatter `host: website`, `mount`, `permissions`; hypothesis,
+  expected effect, touches, source and checks as sections) and validated
+  by Graft's `validateSpec`. `graftSurface()` turns a site into a Graft
+  surface; `GraftSpecCheck` runs Graft's phase two (mount and permissions
+  against the surface) once the baseline is built. A spec that does not
+  fit the site is aborted before the variant starts (stage `spec`).
+- The CLI, the Next.js harness and the fixture loop tests use
+  `GraftSpecCheck`.
+- Every replayed spec gained a mount and the permissions its patch needs.
+
+**Verified**
+
+- Unit tests: `static.permissions` rejects markup under a `style:write`
+  grant, both sides of a rename, and files no scope covers; spec
+  validation codes; the generated surface passes Graft's
+  `validateSurface`; Graft rejects a mount on a missing page
+  (`graft-mount-unknown-slot`) and a scope the site does not offer
+  (`graft-permission-unknown-scope`); the orchestrator aborts on a failed
+  spec check after the baseline and before the variant.
+- The example spec in Graft's ADR passes the lab's reader (Graft's
+  validator).
+- The full suite, including the fixture and Next.js loops with the Graft
+  check wired in.
+
+**Not verified**
+
+- The mount is not enforced on the patch: a diff does not say which pages
+  a file affects. It records intent; the checks verify the change where
+  they look.
+- Ledgers written before this change hold specs without `mount` and
+  `permissions`. They are history and are not re-validated.
+
 ## After M5: Next.js proxy and a GitHub Action (2026-11-15)
 
 Pascal asked why the lab is a command and not something that runs in the

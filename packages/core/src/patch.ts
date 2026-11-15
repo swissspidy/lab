@@ -1,36 +1,12 @@
 // The orchestrator's own reading of a patch. It does not trust the agent's
 // `touches` list or its word: the scope and size checks read the diff.
 import { effectiveDeny } from './config.ts';
+import { matchesAny } from './glob.ts';
 import { sha256 } from './ledger.ts';
 import type { CheckResult, LabConfig } from './types.ts';
+import { scopeOfPath } from './website.ts';
 
-/** Turns a glob into a RegExp over POSIX paths: `**` any depth, `*` and `?` within a segment. */
-export function globToRegExp(glob: string): RegExp {
-	let out = '';
-	for (let i = 0; i < glob.length; i++) {
-		const c = glob[i]!;
-		if (c === '*') {
-			if (glob[i + 1] === '*') {
-				const slash = glob[i + 2] === '/';
-				out += slash ? '(?:.*/)?' : '.*';
-				i += slash ? 2 : 1;
-			} else {
-				out += '[^/]*';
-			}
-		} else if (c === '?') {
-			out += '[^/]';
-		} else {
-			out += /[.+^${}()|[\]\\]/.test(c) ? `\\${c}` : c;
-		}
-	}
-	// `dir/` means everything below dir.
-	if (glob.endsWith('/')) out += '.*';
-	return new RegExp(`^${out}$`);
-}
-
-export function matchesAny(path: string, globs: readonly string[]): boolean {
-	return globs.some((g) => globToRegExp(g).test(path));
-}
+export { globToRegExp, matchesAny } from './glob.ts';
 
 export interface PatchFile {
 	/** Path before the change, or null for a new file. */
@@ -139,10 +115,12 @@ export function hashPatch(patch: string): string {
 }
 
 /**
- * The static patch gate: format, scope and size. Runs before anything is
- * built. Every check is reported, pass or fail, so the ledger shows what ran.
+ * The static patch gate: format, scope, permissions and size. Runs before
+ * anything is built. Every check is reported, pass or fail, so the ledger
+ * shows what ran. `permissions` are the spec's scopes: every changed file
+ * must be of a kind one of them covers.
  */
-export function checkPatch(patch: string, config: LabConfig): CheckResult[] {
+export function checkPatch(patch: string, config: LabConfig, permissions: readonly string[]): CheckResult[] {
 	const { files, problems } = parsePatch(patch);
 	const results: CheckResult[] = [];
 
@@ -178,6 +156,22 @@ export function checkPatch(patch: string, config: LabConfig): CheckResult[] {
 				: outside.length === 0
 					? 'Every changed path is allowed and not denied.'
 					: `Out of scope: ${outside.join(', ')}.`,
+	});
+
+	const ungranted: string[] = [];
+	for (const file of files) {
+		for (const path of new Set([file.from, file.to])) {
+			if (path === null) continue;
+			const scope = scopeOfPath(path);
+			if (!scope) ungranted.push(`${path} (no scope covers this kind of file)`);
+			else if (!permissions.includes(scope)) ungranted.push(`${path} (needs ${scope})`);
+		}
+	}
+	results.push({
+		gate: 'static',
+		check: 'static.permissions',
+		passed: ungranted.length === 0,
+		message: ungranted.length === 0 ? `Every changed file is covered by the spec's permissions (${permissions.join(', ')}).` : `Not granted by the spec: ${ungranted.join(', ')}.`,
 	});
 
 	const lines = files.reduce((sum, f) => sum + f.added + f.removed, 0);

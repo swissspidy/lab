@@ -11,7 +11,7 @@ All three are Apache-2.0, ESM only, TypeScript, and target Node 24.
 
 | Lab stage | Project | Fit today | Plan |
 | --- | --- | --- | --- |
-| Propose (spec format) | Graft | Partial: same idea, closed schema for a different domain | Built-in JSON spec; Graft adapter reads and writes Markdown specs later |
+| Propose (spec format) | Graft | Yes, since Graft ADR 0015: host `website` | Specs are Graft specs; Graft's `validateSpec` checks them against a surface generated from the site (`@lab/adapters`) |
 | Sandbox | Sandburg | No: no URL handed out, dev servers only | Built-in: build, then serve `outDir` on a loopback port |
 | Verify (invariants) | Assay | Partial: deterministic checks fit, but need scripted actions and reference snapshots | Built-in Playwright invariants first; Assay adapter for compiled invariants in M4 |
 | Verify (budgets) | none | No | Built-in: aXe, console, failed requests, overflow, Lighthouse |

@@ -9,6 +9,10 @@
 	"touches": [
 		"app/pricing/page.jsx"
 	],
+	"mount": "page.pricing",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

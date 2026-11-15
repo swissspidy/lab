@@ -23,7 +23,7 @@ import { CommandPublisher, FileState, MetricStore, OriginDeployer, ReferenceDepl
 import type { StateStore } from '@lab/deploy';
 import { LocalSandbox } from '@lab/sandbox';
 import { BrowserVerifier } from '@lab/verify';
-import { GraftSpecProposer, recordingGraftSpecs } from '@lab/adapters';
+import { GraftSpecCheck, GraftSpecProposer, recordingGraftSpecs } from '@lab/adapters';
 import { writeReport } from '@lab/report';
 import { existsSync } from 'node:fs';
 
@@ -198,6 +198,7 @@ async function main(argv: string[]): Promise<number> {
 				builder: experiment ? new ReplayBuilder(experiment) : new ModelBuilder({ provider: provider!, config }),
 				sandbox: new LocalSandbox({ config }),
 				verifier: new BrowserVerifier({ config, siteDir }),
+				specCheck: new GraftSpecCheck(),
 				evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')),
 			});
 			if (!values.dry) {

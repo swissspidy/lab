@@ -10,6 +10,10 @@
 	"touches": [
 		"components/Header.jsx"
 	],
+	"mount": "site",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

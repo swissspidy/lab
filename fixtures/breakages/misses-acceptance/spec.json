@@ -7,6 +7,10 @@
 	],
 	"expectedEffect": "next_step_click up",
 	"touches": [],
+	"mount": "page.index",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

@@ -19,6 +19,8 @@ const spec = () => ({
 	acceptance: ['The install command is visible without scrolling.', 'Copy copies the command.'],
 	expectedEffect: 'next_step_click up',
 	touches: ['src/pages/index.astro'],
+	mount: 'page.index',
+	permissions: ['markup:write'] as unknown[],
 	source: 'agent',
 	checks: [
 		{ criterion: 0, page: 'index.html', expect: [{ expect: 'in-viewport', target: { css: '[data-install-command]' } }] },
@@ -59,6 +61,21 @@ describe('validateSpec', () => {
 		assert.deepEqual(codes({ ...spec(), source: 'model' }), ['spec-source']);
 		assert.deepEqual(codes({ ...spec(), extra: 1 }), ['spec-unknown-key']);
 		assert.deepEqual(codes({ ...spec(), acceptance: [] }).includes('spec-acceptance'), true);
+	});
+
+	it('requires a mount slot and known permissions', () => {
+		assert.deepEqual(codes({ ...spec(), mount: 'site' }), []);
+		assert.deepEqual(codes({ ...spec(), mount: 'page.docs.intro' }), []);
+		assert.deepEqual(codes({ ...spec(), mount: 'index.html' }), ['spec-mount']);
+		assert.deepEqual(codes({ ...spec(), mount: undefined }), ['spec-mount']);
+		assert.deepEqual(codes({ ...spec(), permissions: [] }), ['spec-permissions']);
+		assert.deepEqual(codes({ ...spec(), permissions: undefined }), ['spec-permissions']);
+		assert.deepEqual(codes({ ...spec(), permissions: ['markup:write', 'markup:write'] }), ['spec-permissions']);
+		assert.deepEqual(codes({ ...spec(), permissions: ['config:write'] }), ['spec-permission-unknown']);
+		// A value with a hostile toString is reported, not coerced (which would throw).
+		const hostile = { toString: null };
+		assert.deepEqual(codes({ ...spec(), permissions: [hostile] }), ['spec-permission-unknown']);
+		assert.deepEqual(codes({ ...spec(), checks: [{ criterion: 0, page: 'index.html', steps: [{ do: hostile }], expect: [{ expect: hostile }] }, spec().checks[1]] }), ['spec-check-invalid', 'spec-check-invalid']);
 	});
 
 	it('refuses an id the ledger already has', () => {

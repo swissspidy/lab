@@ -10,6 +10,10 @@
 	"touches": [
 		"src/components/header.html"
 	],
+	"mount": "site",
+	"permissions": [
+		"markup:write"
+	],
 	"source": "agent",
 	"checks": [
 		{

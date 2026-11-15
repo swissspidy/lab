@@ -14,10 +14,11 @@ conservative choice the lab took meanwhile.
    (a) add a "serve a built directory and return its URL" mode to Sandburg;
    (b) treat Sandburg as a Verify backend instead (its checks run where it
    serves). Meanwhile the lab uses its built-in sandbox. Which do you want?
-4. **Graft spec schema.** Graft's spec schema is closed and host-specific.
-   Should Graft gain a `website` host (with `touches` as its scope), or
-   should the lab keep its own JSON schema and only borrow Graft's Markdown
-   layout? Meanwhile the lab keeps its own schema.
+4. **Graft spec schema.** Resolved 2026-11-15: Graft has a `website` host
+   ([Graft ADR 0015](https://github.com/swissspidy/graft/blob/main/docs/adr/0015-website-host.md)).
+   Experiment specs are valid Graft specs (a mount slot and permission
+   scopes in the frontmatter; the lab's fields as sections), and Graft's
+   `validateSpec` checks them against a surface generated from the site.
 5. **Lighthouse.** Running Lighthouse adds a large dependency and a second
    Chrome launcher, and its scores vary on shared CI machines. The lab
    measures LCP and CLS in the page with `PerformanceObserver` and checks

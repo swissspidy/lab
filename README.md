@@ -73,6 +73,14 @@ npm run example:nextjs   # M4 and an unattended week on simulated time, about 6 
 `lab report` writes the ledger as a static HTML page that someone who has
 never seen the repository can read.
 
+Every experiment spec is a [Graft](https://github.com/swissspidy/graft) spec
+for host `website` (Graft ADR 0015). Its frontmatter names a mount slot
+(`site`, or one page such as `page.docs`) and the kinds of files it may
+change (`markup:write`, `style:write`, `content:write`, `script:write`,
+`asset:write`). Graft's own validator checks both against what the site
+offers once the baseline is built, and the static gate rejects a patch that
+changes a file no listed permission covers (`static.permissions`).
+
 Model proposals are also written to `lab/specs/<id>.md` as Graft specs. Ignore
 `lab/specs/`, `lab/report/` and `lab/evidence/` in the site's `.gitignore`, or
 commit them: a kept experiment is merged only into a clean tree.
