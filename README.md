@@ -200,7 +200,9 @@ It does not count towards `auto` mode, which needs completed experiments.
 It waits while an experiment is live, so the baseline does not change under
 it. It is merged only onto the site it was verified on: if anything
 outside `lab/` changed since, the merge is refused (`promote-site-changed`)
-and the next iteration can propose it again. The ledger refuses a shipped fix (`ledger-fix-shipped`) and a merged
+and the next iteration can propose it again. The GitHub Action applies the same rule when it
+pushes: it rebases its commits onto what others pushed since checkout, but
+not a merged fix onto changes to the site outside `lab/`. The ledger refuses a shipped fix (`ledger-fix-shipped`) and a merged
 experiment (`ledger-experiment-merged`). The site's own deployment, or
 `lab publish` on the reference host, publishes the merge.
 

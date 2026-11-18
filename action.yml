@@ -98,19 +98,4 @@ runs:
       env:
         SITE: ${{ inputs.site }}
         COMMAND: ${{ inputs.command }}
-      run: |
-        git add -f -- "$SITE/lab/ledger.jsonl" 2>/dev/null || true
-        [ -d "$SITE/lab/specs" ] && git add -f -- "$SITE/lab/specs"
-        if ! git diff --cached --quiet; then git commit -q -m "lab: $COMMAND"; fi
-        # Someone may have pushed since checkout: rebase onto it and retry. If that
-        # keeps failing, fail the job loudly; the commits stay in the job log.
-        if [ -n "$(git log --branches --not --remotes --oneline)" ]; then
-          for attempt in 1 2 3; do
-            if git push; then exit 0; fi
-            git pull --rebase --no-edit || { git rebase --abort; break; }
-            sleep $((attempt * 5))
-          done
-          echo "::error::Could not push the ledger. The deploy state may be ahead of the committed ledger; run the workflow again or push lab/ledger.jsonl by hand." >&2
-          git log --branches --not --remotes --stat >&2
-          exit 1
-        fi
+      run: bash "${{ github.action_path }}/scripts/push-ledger.sh"
