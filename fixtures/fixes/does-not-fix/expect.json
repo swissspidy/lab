@@ -1,0 +1,5 @@
+{
+	"flaw": "contrast-failure",
+	"outcome": "verify_failed",
+	"check": "fix.resolved"
+}

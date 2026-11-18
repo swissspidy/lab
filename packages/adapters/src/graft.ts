@@ -2,7 +2,8 @@
 // spec: frontmatter Graft's schema accepts as is (`host: website`, a mount
 // slot, permission scopes), a title, an intent paragraph and acceptance
 // criteria. The lab's own fields are sections Graft keeps but does not
-// interpret: hypothesis, expected effect, touches, source and the checks.
+// interpret: hypothesis, expected effect, touches, source and the checks,
+// and for a fix or a spec that cites findings, its kind and evidence.
 //
 // Validation is Graft's: phase one (the schema) whenever a spec is read,
 // phase two (mount and permissions against the site's surface) once the
@@ -18,6 +19,8 @@ const oneLine = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 /** The lab's sections, in the order they are written. */
 const SECTIONS = ['Hypothesis', 'Expected effect', 'Touches', 'Source', 'Checks'] as const;
+/** Written only when they say something: an experiment that cites nothing has neither. */
+const OPTIONAL = ['Kind', 'Evidence'] as const;
 
 /** Writes a spec as Graft Markdown. JSON is valid YAML, so frontmatter values are written as JSON. */
 export function toGraftMarkdown(spec: ExperimentSpec): string {
@@ -38,6 +41,8 @@ export function toGraftMarkdown(spec: ExperimentSpec): string {
 		'',
 		...criteria,
 		'',
+		...(spec.kind === 'fix' ? ['## Kind', '', 'fix', ''] : []),
+		...(spec.evidence?.length ? ['## Evidence', '', ...spec.evidence.map((id) => `- ${oneLine(id)}`), ''] : []),
 		'## Hypothesis',
 		'',
 		oneLine(spec.hypothesis),
@@ -87,7 +92,7 @@ export function fromGraftMarkdown(source: string, surface?: Surface): { spec: Ex
 	if (graft.manifest.host !== 'website') {
 		diagnostics.push({ code: 'graft-spec-host', severity: 'error', message: `This spec is for "${graft.manifest.host}". Experiment specs use \`host: website\`.`, path: '/host' });
 	}
-	const section = (heading: (typeof SECTIONS)[number]) => graft.sections.find((s) => s.heading.toLowerCase() === heading.toLowerCase())?.content;
+	const section = (heading: (typeof SECTIONS)[number] | (typeof OPTIONAL)[number]) => graft.sections.find((s) => s.heading.toLowerCase() === heading.toLowerCase())?.content;
 	for (const heading of SECTIONS) {
 		if (section(heading) === undefined) diagnostics.push({ code: 'graft-spec-section', severity: 'error', message: `The spec needs a "## ${heading}" section.` });
 	}
@@ -104,12 +109,21 @@ export function fromGraftMarkdown(source: string, surface?: Surface): { spec: Ex
 		}
 	}
 	if (diagnostics.length > 0) return { spec: null, diagnostics };
-	const touches = (section('Touches') ?? '')
-		.split('\n')
-		.filter((line) => line.startsWith('- '))
-		.map((line) => line.slice(2).trim());
+	const list = (text: string | undefined) =>
+		(text ?? '')
+			.split('\n')
+			.filter((line) => line.startsWith('- '))
+			.map((line) => line.slice(2).trim());
+	const touches = list(section('Touches'));
+	const kind = section('Kind');
+	if (kind !== undefined && !['fix', 'experiment'].includes(oneLine(kind))) {
+		return { spec: null, diagnostics: [{ code: 'graft-spec-kind', severity: 'error', message: 'The "## Kind" section must say `fix` or `experiment`.' }] };
+	}
+	const evidence = list(section('Evidence'));
 	const spec: ExperimentSpec = {
 		id: graft.manifest.id,
+		...(kind !== undefined && oneLine(kind) === 'fix' ? { kind: 'fix' as const } : {}),
+		...(evidence.length ? { evidence } : {}),
 		hypothesis: oneLine(section('Hypothesis') ?? ''),
 		intent: oneLine(graft.description),
 		acceptance: graft.criteria.map((c) => c.text),

@@ -1,0 +1,37 @@
+{
+	"hypothesis": "The buttons' text fails the contrast ratio, so some visitors cannot read it.",
+	"intent": "Give buttons the accent colour again, so their white text has enough contrast.",
+	"acceptance": [
+		"The Get started button is still visible on the home page."
+	],
+	"expectedEffect": "none",
+	"touches": [
+		"src/styles/site.css"
+	],
+	"mount": "site",
+	"permissions": [
+		"style:write"
+	],
+	"source": "agent",
+	"kind": "fix",
+	"evidence": [
+		"a11y.color-contrast@index.html",
+		"a11y.color-contrast@pricing.html"
+	],
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "index.html",
+			"expect": [
+				{
+					"expect": "visible",
+					"target": {
+						"role": "link",
+						"name": "Get started"
+					}
+				}
+			]
+		}
+	],
+	"id": "fix-contrast"
+}

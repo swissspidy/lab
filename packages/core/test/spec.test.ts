@@ -63,6 +63,24 @@ describe('validateSpec', () => {
 		assert.deepEqual(codes({ ...spec(), acceptance: [] }).includes('spec-acceptance'), true);
 	});
 
+	it('checks a fix: it cites what it removes, by known ids, and is not measured', () => {
+		const findings = [{ id: 'layout.overflow@index.html', kind: 'layout' as const, page: 'index.html', viewports: ['390x844'], summary: 'The page scrolls sideways at 390x844.', check: 'budgets.overflow' }];
+		const fix = { ...spec(), kind: 'fix', evidence: ['layout.overflow@index.html'], expectedEffect: 'none' };
+		const fixCodes = (raw: unknown) => validateSpec(raw, config, [], findings).diagnostics.map((d) => d.code);
+		assert.deepEqual(fixCodes(fix), []);
+		assert.deepEqual(fixCodes({ ...fix, kind: 'patch' }), ['spec-kind', 'spec-effect']);
+		assert.deepEqual(fixCodes({ ...fix, evidence: [] }), ['spec-fix-evidence']);
+		assert.deepEqual(fixCodes({ ...fix, evidence: undefined }), ['spec-fix-evidence']);
+		assert.deepEqual(fixCodes({ ...fix, evidence: ['x', 'x'] }), ['spec-evidence']);
+		assert.deepEqual(fixCodes({ ...fix, evidence: ['a11y.color-contrast@index.html'] }), ['spec-evidence-unknown']);
+		assert.deepEqual(fixCodes({ ...fix, expectedEffect: 'next_step_click up' }), ['spec-effect']);
+		// An experiment may cite findings, and must still name its effect on the metric.
+		assert.deepEqual(fixCodes({ ...spec(), evidence: ['layout.overflow@index.html'] }), []);
+		assert.deepEqual(fixCodes({ ...spec(), expectedEffect: 'none' }), ['spec-effect']);
+		// Without an observation, ids cannot be checked here; Verify checks them on the baseline.
+		assert.deepEqual(codes({ ...fix, evidence: ['a11y.color-contrast@index.html'] }), []);
+	});
+
 	it('requires a mount slot and known permissions', () => {
 		assert.deepEqual(codes({ ...spec(), mount: 'site' }), []);
 		assert.deepEqual(codes({ ...spec(), mount: 'page.docs.intro' }), []);

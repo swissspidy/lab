@@ -1,0 +1,40 @@
+{
+	"hypothesis": "The home page scrolls sideways.",
+	"intent": "Remove the fixed minimum width from the main column.",
+	"acceptance": [
+		"The pricing heading is visible on a phone."
+	],
+	"expectedEffect": "none",
+	"touches": [
+		"src/styles/site.css"
+	],
+	"mount": "site",
+	"permissions": [
+		"style:write"
+	],
+	"source": "agent",
+	"kind": "fix",
+	"evidence": [
+		"layout.overflow@index.html"
+	],
+	"checks": [
+		{
+			"criterion": 0,
+			"page": "pricing.html",
+			"viewport": {
+				"width": 390,
+				"height": 844
+			},
+			"expect": [
+				{
+					"expect": "visible",
+					"target": {
+						"role": "heading",
+						"name": "Pricing"
+					}
+				}
+			]
+		}
+	],
+	"id": "fix-overflow-partial"
+}

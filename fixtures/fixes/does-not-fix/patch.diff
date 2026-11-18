@@ -1,0 +1,12 @@
+diff --git a/src/styles/site.css b/src/styles/site.css
+index eae7086..1a2b3c4 100644
+--- a/src/styles/site.css
++++ b/src/styles/site.css
+@@ -1,6 +1,6 @@
+ :root {
+ 	--ink: #1b1f24;
+-	--muted: #4a525c;
++	--muted: #3f4750;
+ 	--paper: #ffffff;
+ 	--accent: #0b5cad;
+ 	--line: #d5dae0;

@@ -104,3 +104,34 @@ consent and API key questions for now, and make the remaining decisions.
     (2026-11-15) that generated CSS is fine: a tweak is a style-only Graft
     spec plus its stylesheet, verified like a variant before any visitor
     gets it. Decided.
+
+## Decisions taken on 2026-11-18
+
+Pascal asked for proposals grounded in evidence and for loops that need no
+traffic, after comparing the lab with Google's Stitch Loop. These are the
+choices made while building M6.
+
+19. **Evidence is required for fixes only.** A fix must cite the findings
+    it removes. An experiment may cite findings but does not have to: the
+    meter counts per bucket, not per page, so no finding describes a
+    conversion problem yet. Requiring a citation would only make the model
+    cite something unrelated. Per-page metrics would make it possible to
+    require one; they are not built.
+20. **What counts as a finding.** Only what the verifier already measures:
+    aXe rules per page, console errors, failed requests, page status,
+    sideways scroll, LCP and CLS over budget, and dead links. Security
+    findings (Stitch Loop's third default loop) are not covered: the lab
+    has no scanner, and a dependency or header change is outside what a
+    variant may touch.
+21. **A fix waits for a live experiment.** Merging a fix while an
+    experiment runs would change the baseline under it. The fix stays
+    approved and merges on the first `lab run` after the experiment ends.
+22. **Baseline sanity for fixes.** A fix's baseline fails the budget it
+    fixes. Sanity tolerates that only when every finding behind the failing
+    budget is cited, so a partial fix aborts instead of hiding the rest.
+23. **Fixes and auto mode.** Merged fixes do not count towards the three
+    gated loops `auto` needs, since they never meet visitors. In `auto` mode
+    a fix is approved like an experiment once the entry criteria hold.
+24. **Publishing a merge.** A merged fix is a commit, like a kept variant.
+    The site's own deployment publishes it, or `lab publish` on the
+    reference host. The lab does not republish by itself.

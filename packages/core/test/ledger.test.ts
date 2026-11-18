@@ -86,6 +86,20 @@ describe('FileLedger', () => {
 		await assert.rejects(l.append(input('kept')), /ledger-invalid-transition/);
 	});
 
+	it('merges a fix only after approval, and never ships one or merges an experiment', async () => {
+		const l = ledger();
+		await l.append(input('proposed', 'exp-0002', { spec: { id: 'exp-0002', kind: 'fix' } }));
+		for (const type of ['built', 'verify_passed'] as const) await l.append(input(type, 'exp-0002'));
+		await assert.rejects(l.append(input('merged', 'exp-0002', { reason: 'r' })), /ledger-invalid-transition/);
+		await l.append(input('approved', 'exp-0002', { by: 'me' }));
+		await assert.rejects(l.append(input('shipped', 'exp-0002')), (e: unknown) => e instanceof LedgerError && e.diagnostics.some((d) => d.code === 'ledger-fix-shipped'));
+		await l.append(input('merged', 'exp-0002', { reason: 'r' }));
+		await assert.rejects(l.append(input('kept', 'exp-0002')), /ledger-invalid-transition/);
+
+		for (const type of ['proposed', 'built', 'verify_passed', 'approved'] as const) await l.append(input(type));
+		await assert.rejects(l.append(input('merged', 'exp-0001', { reason: 'r' })), (e: unknown) => e instanceof LedgerError && e.diagnostics.some((d) => d.code === 'ledger-experiment-merged'));
+	});
+
 	it('refuses malformed events', async () => {
 		const l = ledger();
 		await assert.rejects(l.append({ ...input('proposed'), payload: {} } as LedgerEventInput), /payload.source/);

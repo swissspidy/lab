@@ -1,9 +1,12 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type Anthropic from '@anthropic-ai/sdk';
-import { StageError } from '@lab/core';
+import { StageError, validateConfig } from '@lab/core';
 import type { LedgerEvent } from '@lab/core';
-import { AnthropicProvider, extractJson, nextExperimentId, renderFiles, summarizeHistory } from '../src/index.ts';
+import { AnthropicProvider, ModelProposer, ScriptedProvider, extractJson, nextExperimentId, renderFiles, summarizeHistory } from '../src/index.ts';
 
 const ev = (type: LedgerEvent['type'], experiment: string, payload: Record<string, unknown> = {}) => ({ type, experiment, payload }) as unknown as LedgerEvent;
 
@@ -72,11 +75,8 @@ describe('AnthropicProvider', () => {
 
 describe('ModelBuilder and siteFiles with symlinks and bad edits', () => {
 	it('never follows a symlink, neither to read context nor to write an edit', async () => {
-		const { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, readFileSync, rmSync } = await import('node:fs');
-		const { tmpdir } = await import('node:os');
-		const { join } = await import('node:path');
-		const { validateConfig } = await import('@lab/core');
-		const { ModelBuilder, ScriptedProvider, siteFiles } = await import('../src/index.ts');
+		const { symlinkSync, readFileSync } = await import('node:fs');
+		const { ModelBuilder, siteFiles } = await import('../src/index.ts');
 		const root = mkdtempSync(join(tmpdir(), 'lab-sym-'));
 		const outside = mkdtempSync(join(tmpdir(), 'lab-outside-'));
 		try {
@@ -117,6 +117,35 @@ describe('ModelBuilder and siteFiles with symlinks and bad edits', () => {
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 			rmSync(outside, { recursive: true, force: true });
+		}
+	});
+});
+
+describe('ModelProposer and findings', () => {
+	it('shows the findings, and sends back a citation of one that is not there', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'lab-findings-'));
+		try {
+			mkdirSync(join(root, 'src'));
+			writeFileSync(join(root, 'src', 'a.html'), '<h1>A</h1>\n');
+			const config = validateConfig({
+				site: { repo: '.', build: 'b', outDir: 'dist' },
+				metric: { id: 'm', kind: 'conversion' },
+				allow: ['src/**'],
+				deny: [],
+				budgets: { lcpMs: 2500, cls: 0.1, axeViolations: 0, bundleKbDelta: 20 },
+				traffic: { share: 0.1, minSamplesPerBucket: 1000, maxDays: 14 },
+			}).config!;
+			const finding = { id: 'a11y.color-contrast@index.html', kind: 'accessibility' as const, page: 'index.html', viewports: ['1280x800'], summary: 'aXe rule color-contrast fails on 1 element(s): ["<b>"] at 1280x800.' };
+			const fix = { kind: 'fix', hypothesis: 'h', intent: 'Darken the button.', acceptance: ['a'], expectedEffect: 'none', touches: [], mount: 'site', permissions: ['style:write'], checks: [{ criterion: 0, page: 'index.html', expect: [{ expect: 'visible', target: { css: 'h1' } }] }] };
+			const provider = new ScriptedProvider({ propose: [JSON.stringify({ ...fix, evidence: ['a11y.button-name@index.html'] }), JSON.stringify({ ...fix, evidence: [finding.id] })] });
+			const spec = await new ModelProposer({ provider, config }).propose({ site: { dir: root, commit: 'c' }, config, baseline: null, history: [], findings: [finding] });
+			assert.equal(spec.kind, 'fix');
+			assert.deepEqual(spec.evidence, [finding.id]);
+			assert.match(provider.requests[0]!.prompt, /Findings on the baseline \(1\)[^\n]*\n- a11y\.color-contrast@index\.html \(accessibility\): aXe rule color-contrast/);
+			assert.doesNotMatch(provider.requests[0]!.prompt, /\["<b>"\]/, 'page text in a finding cannot open an envelope tag');
+			assert.match(provider.requests[1]!.prompt, /spec-evidence-unknown/);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
 		}
 	});
 });

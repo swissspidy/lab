@@ -58,6 +58,29 @@ describe('report', () => {
 		}
 	});
 
+	it('shows a fix, the findings it cites as observed, and its merge', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'lab-report-fix-'));
+		try {
+			const ledger = new FileLedger(join(dir, 'ledger.jsonl'), { now: () => new Date(Date.UTC(2026, 0, 1)) });
+			const a = { experiment: 'exp-0003', siteCommit: 'c', patchHash: sha256(PATCH) };
+			const evidence = [{ id: 'layout.overflow@pricing.html', kind: 'layout', page: 'pricing.html', viewports: ['390x844'], summary: 'The page scrolls sideways at 390x844.' }];
+			await ledger.append({ ...a, type: 'proposed', patchHash: null, payload: { source: 'agent', evidence, spec: { kind: 'fix', evidence: ['layout.overflow@pricing.html'], hypothesis: 'h', intent: 'Let the plans wrap.', acceptance: ['x'], expectedEffect: 'none' } } } as LedgerEventInput);
+			await ledger.append({ ...a, type: 'built', payload: { patch: PATCH } });
+			await ledger.append({ ...a, type: 'verify_passed', payload: { results: [{ gate: 'fix', check: 'fix.resolved', passed: true, message: 'Gone from the variant: layout.overflow@pricing.html.' }] } });
+			await ledger.append({ ...a, type: 'approved', payload: { by: 'pascal' } });
+			const pending = renderReport(await ledger.history());
+			assert.ok(pending.includes('Approved, waiting to merge'));
+			await ledger.append({ ...a, type: 'merged', payload: { reason: 'Verified fix for layout.overflow@pricing.html; merged without an experiment.' } });
+			const html = renderReport(await ledger.history());
+			for (const text of ['Fix: verified in the sandbox and merged after approval', '<code>layout.overflow@pricing.html</code>: The page scrolls sideways at 390x844.', 'fix.resolved', 'Merged: Verified fix', '1 fix(es) merged', 'state-merged']) {
+				assert.ok(html.includes(text), text);
+			}
+			assert.ok(!html.includes('<dt>Expected effect</dt>'), 'a fix is not measured');
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
 	it('escapes everything the ledger holds', async () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lab-report-'));
 		try {

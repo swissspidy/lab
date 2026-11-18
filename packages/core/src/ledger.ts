@@ -40,10 +40,12 @@ export const TRANSITIONS: Record<LedgerEventType | 'start', readonly LedgerEvent
 	verify_failed: [],
 	// In `propose-only` mode the loop stops here and opens a pull request.
 	verify_passed: ['approved', 'aborted'],
-	approved: ['shipped', 'aborted'],
+	// An experiment ships; a fix is merged without traffic.
+	approved: ['shipped', 'merged', 'aborted'],
 	shipped: ['measured', 'reverted', 'aborted'],
 	measured: ['measured', 'kept', 'reverted', 'aborted'],
 	kept: [],
+	merged: [],
 	reverted: [],
 	aborted: [],
 };
@@ -52,7 +54,7 @@ export const TRANSITIONS: Record<LedgerEventType | 'start', readonly LedgerEvent
  * States an iteration of the loop may end in. Anything else means the loop
  * stopped half way through an experiment.
  */
-export const SETTLED: ReadonlySet<LedgerEventType> = new Set(['verify_failed', 'verify_passed', 'kept', 'reverted', 'aborted']);
+export const SETTLED: ReadonlySet<LedgerEventType> = new Set(['verify_failed', 'verify_passed', 'kept', 'merged', 'reverted', 'aborted']);
 
 const ID = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -102,6 +104,7 @@ export function validateEventShape(event: unknown, where: string): Diagnostic[] 
 export function checkLedger(events: unknown[]): Diagnostic[] {
 	const diagnostics: Diagnostic[] = [];
 	const state = new Map<string, LedgerEventType>();
+	const fixes = new Set<string>();
 	let prevHash: string | null = null;
 	for (const [i, raw] of events.entries()) {
 		const where = `ledger:${i + 1}`;
@@ -129,6 +132,14 @@ export function checkLedger(events: unknown[]): Diagnostic[] {
 				path: where,
 				message: `\`${event.type}\` cannot follow \`${from === 'start' ? 'nothing' : from}\` for ${event.experiment}. Allowed: ${TRANSITIONS[from].join(', ') || 'none, the experiment is finished'}.`,
 			});
+		}
+		if (event.type === 'proposed' && (event.payload.spec as { kind?: unknown } | undefined)?.kind === 'fix') fixes.add(event.experiment);
+		// A fix never meets visitors before it is merged, and an experiment is never merged unmeasured.
+		if (event.type === 'shipped' && fixes.has(event.experiment)) {
+			diagnostics.push({ code: 'ledger-fix-shipped', severity: 'error', path: where, message: `${event.experiment} is a fix: it is merged after approval, not shipped to visitors.` });
+		}
+		if (event.type === 'merged' && !fixes.has(event.experiment)) {
+			diagnostics.push({ code: 'ledger-experiment-merged', severity: 'error', path: where, message: `${event.experiment} is an experiment: it is kept only after it was measured, never merged straight after approval.` });
 		}
 		state.set(event.experiment, event.type);
 		prevHash = hash;

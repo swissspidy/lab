@@ -15,6 +15,8 @@ const escape = (value: unknown): string =>
 		.replaceAll("'", '&#39;');
 
 interface Spec {
+	kind?: string;
+	evidence?: string[];
 	hypothesis?: string;
 	intent?: string;
 	acceptance?: string[];
@@ -31,6 +33,8 @@ export interface ExperimentView {
 	state: LedgerEvent['type'];
 	source: string;
 	spec: Spec;
+	/** The findings the spec cites, as they were observed when it was proposed. */
+	evidence: Array<{ id: string; summary: string }>;
 	patch: string | null;
 	results: CheckResult[];
 	failures: CheckResult[];
@@ -50,6 +54,7 @@ const OUTCOME: Record<string, string> = {
 	shipped: 'Live',
 	measured: 'Live',
 	kept: 'Kept',
+	merged: 'Merged',
 	reverted: 'Reverted',
 	aborted: 'Aborted',
 };
@@ -80,6 +85,7 @@ export function experimentViews(events: LedgerEvent[]): ExperimentView[] {
 				state: last.type,
 				source: String(proposed?.payload.source ?? 'agent'),
 				spec: (proposed?.payload.spec as Spec | undefined) ?? {},
+				evidence: ((proposed?.payload.evidence as Array<{ id?: unknown; summary?: unknown }> | undefined) ?? []).filter((f) => f && typeof f.id === 'string').map((f) => ({ id: String(f.id), summary: String(f.summary ?? '') })),
 				patch: typeof built?.payload.patch === 'string' ? built.payload.patch : null,
 				results,
 				failures,
@@ -90,12 +96,23 @@ export function experimentViews(events: LedgerEvent[]): ExperimentView[] {
 						return { at: e.at, day: Number(e.payload.day), baseline: stats.baseline, variant: stats.variant, probability: Number(e.payload.probability), decision: e.payload.decision as { action: string; reason: string } };
 					}),
 				events: list,
-				outcome: `${OUTCOME[last.type] ?? last.type}${['kept', 'reverted', 'aborted', 'verify_failed'].includes(last.type) && reasonOf(last) ? `: ${reasonOf(last)}` : ''}`,
+				outcome: `${last.type === 'approved' && (proposed?.payload.spec as Spec | undefined)?.kind === 'fix' ? 'Approved, waiting to merge' : (OUTCOME[last.type] ?? last.type)}${['kept', 'merged', 'reverted', 'aborted', 'verify_failed'].includes(last.type) && reasonOf(last) ? `: ${reasonOf(last)}` : ''}`,
 				started: list[0]!.at,
 				ended: last.at,
 			};
 		})
 		.toSorted((a, b) => (a.started < b.started ? 1 : a.started > b.started ? -1 : 0));
+}
+
+/** The findings a spec cites, with what was observed; an id alone when the ledger has no observation. */
+function evidenceOf(v: ExperimentView): string {
+	const ids = Array.isArray(v.spec.evidence) ? v.spec.evidence : [];
+	if (ids.length === 0) return '';
+	const items = ids.map((id) => {
+		const seen = v.evidence.find((f) => f.id === id);
+		return `<li><code>${escape(id)}</code>${seen?.summary ? `: ${escape(seen.summary)}` : ''}</li>`;
+	});
+	return `<dt>Evidence</dt><dd><ul>${items.join('')}</ul></dd>\n`;
 }
 
 const pct = (c: Counts) => (c.visits === 0 ? '–' : `${((100 * c.conversions) / c.visits).toFixed(2)}%`);
@@ -145,9 +162,10 @@ export function renderReport(events: LedgerEvent[], options: ReportOptions = {})
 <h2><a href="#${escape(v.id)}">${escape(v.id)}</a> <span class="badge">${escape(OUTCOME[v.state] ?? v.state)}</span></h2>
 ${v.outcome !== (OUTCOME[v.state] ?? v.state) ? `<p class="outcome">${escape(v.outcome)}</p>` : ''}
 <dl>
+<dt>Kind</dt><dd>${v.spec.kind === 'fix' ? 'Fix: verified in the sandbox and merged after approval, without an experiment' : 'Experiment: shown to a share of visitors and measured'}</dd>
 <dt>Hypothesis</dt><dd>${escape(v.spec.hypothesis)}</dd>
 <dt>Change</dt><dd>${escape(v.spec.intent)}</dd>
-<dt>Expected effect</dt><dd>${escape(v.spec.expectedEffect)}</dd>
+${v.spec.kind === 'fix' ? '' : `<dt>Expected effect</dt><dd>${escape(v.spec.expectedEffect)}</dd>\n`}${evidenceOf(v)}
 <dt>Proposed by</dt><dd>${escape(v.source === 'visitors' ? 'visitor requests' : 'the agent')}</dd>
 </dl>
 ${criteria.length ? `<h3>Acceptance criteria</h3><ul>${criteria.join('')}</ul>` : ''}
@@ -174,7 +192,7 @@ h1 { margin-bottom: .25rem; } h2 { margin-bottom: 0; } h2 a { color: inherit; }
 .muted, time { color: var(--muted); }
 .exp { border-top: 1px solid var(--line); padding: 1rem 0; }
 .badge { font-size: .8rem; font-weight: 600; border: 1px solid var(--line); border-radius: 999px; padding: .1rem .6rem; vertical-align: middle; }
-.state-kept .badge, .pass { color: var(--pass); } .state-verify_failed .badge, .state-reverted .badge, .state-aborted .badge, .fail { color: var(--fail); }
+.state-kept .badge, .state-merged .badge, .pass { color: var(--pass); } .state-verify_failed .badge, .state-reverted .badge, .state-aborted .badge, .fail { color: var(--fail); }
 .outcome { margin-top: .25rem; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: .25rem 1rem; } dt { color: var(--muted); } dd { margin: 0; }
 .table-wrap { overflow-x: auto; position: relative; }
@@ -189,9 +207,10 @@ summary { cursor: pointer; margin: .5rem 0; }
 <body>
 <main>
 <h1>${escape(title)}</h1>
-<p class="muted">${views.length} experiment(s): ${count('kept')} kept, ${count('reverted')} reverted, ${count('verify_failed')} rejected by verification, ${count('aborted')} aborted, ${views.filter((v) => ['shipped', 'measured'].includes(v.state)).length} live. Generated ${escape((options.generatedAt ?? new Date()).toISOString().slice(0, 16).replace('T', ' '))} UTC from the ledger.</p>
+<p class="muted">${views.length} experiment(s) and fix(es): ${count('kept')} kept, ${count('merged')} fix(es) merged, ${count('reverted')} reverted, ${count('verify_failed')} rejected by verification, ${count('aborted')} aborted, ${views.filter((v) => ['shipped', 'measured'].includes(v.state)).length} live. Generated ${escape((options.generatedAt ?? new Date()).toISOString().slice(0, 16).replace('T', ' '))} UTC from the ledger.</p>
 <details><summary>How to read this</summary>
 <p>The lab improves a website one experiment at a time. For each experiment an agent writes a hypothesis, the change it wants to make and acceptance criteria. The change is built as a patch and tested in a sandbox. It must pass every check: the site's own invariants (what the site must always do), quality budgets (accessibility, errors, speed, layout) and its own criteria. Only then can a person approve it. It is then shown to a share of visitors, measured against the current site on one metric, and kept or reverted. Rejected and reverted experiments are normal results.</p>
+<p>A fix is different: it removes problems the lab's checks found on the current site, such as an accessibility violation or a page that scrolls sideways. It cites those findings, and verification shows them gone and nothing new in their place. Since that can be checked without visitors, an approved fix is merged without an experiment.</p>
 <p><em>P(expected effect)</em> is the probability, given the data so far, that the change moves the metric the way the hypothesis says. The lab keeps a change at the site's keep threshold (0.95 by default) or more, once the planned sample is in, and reverts it at 0.05 or less, or when twice the planned sample shows no effect of the planned size.</p>
 </details>
 ${sections.join('\n') || '<p>The ledger is empty.</p>'}

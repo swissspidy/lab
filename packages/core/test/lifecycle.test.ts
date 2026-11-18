@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { BetaBinomialDecider, FileLedger, StageError, approve, gitPromote, kill, measure, planShip, requiredSamples, sha256, ship, tick, validateConfig } from '../src/index.ts';
+import { BetaBinomialDecider, FileLedger, StageError, approve, gitPromote, kill, measure, merge, planShip, requiredSamples, sha256, ship, tick, validateConfig } from '../src/index.ts';
 import type { BucketStats, Deployer, LedgerEventInput, LiveDeps, TrafficEstimate } from '../src/index.ts';
 
 const rawConfig = {
@@ -260,6 +260,70 @@ describe('lifecycle', () => {
 			const result = await tick({ ...deps({ config: autoConfig() }), ...noIterate, evidenceDir: dir });
 			assert.equal(result.step, 'wait');
 			assert.match(result.step === 'wait' ? result.reason : '', /2 experiment\(s\).*Guardrails rolled back exp-0006/s);
+		});
+	});
+
+	describe('fixes', () => {
+		async function verifiedFix(id = 'exp-0002', patch = PATCH) {
+			const base = { experiment: id, siteCommit: 'c', patchHash: sha256(patch) };
+			await ledger.append({ ...base, type: 'proposed', patchHash: null, payload: { source: 'agent', spec: { id, kind: 'fix', evidence: ['layout.overflow@index.html'], intent: 'x', expectedEffect: 'none' } } });
+			await ledger.append({ ...base, type: 'built', payload: { patch } });
+			await ledger.append({ ...base, type: 'verify_passed', payload: {} });
+		}
+		const noLive = { deployer: { ...deployer, ship: async () => assert.fail('a fix never ships') }, meter: { read: async () => assert.fail('a fix is never measured'), traffic: async () => assert.fail('a fix needs no traffic') } };
+
+		it('merges an approved fix without traffic, and never ships one', async () => {
+			await verifiedFix();
+			await assert.rejects(merge(deps(), 'exp-0002'), (e: unknown) => e instanceof StageError && e.code === 'merge-invalid-state');
+			await approve(deps(), 'exp-0002', 'me');
+			await assert.rejects(ship(deps(noLive), 'exp-0002'), (e: unknown) => e instanceof StageError && e.code === 'ship-fix');
+			const result = await tick({ ...deps(noLive), proposer: { propose: async () => assert.fail('nothing new while a fix waits') } } as never);
+			assert.equal(result.step, 'merge');
+			assert.equal((result as { result: { outcome: string } }).result.outcome, 'merged');
+			assert.deepEqual(promoted, ['exp-0002']);
+			assert.deepEqual(log, []);
+			const events = await ledger.history();
+			assert.equal(events.at(-1)!.type, 'merged');
+			assert.match(String(events.at(-1)!.payload.reason), /layout\.overflow@index\.html/);
+		});
+
+		it('refuses to merge an experiment', async () => {
+			await verified();
+			await approve(deps(), 'exp-0001', 'me');
+			await assert.rejects(merge(deps(), 'exp-0001'), (e: unknown) => e instanceof StageError && e.code === 'merge-not-fix');
+		});
+
+		it('waits while an experiment is live, so the baseline does not change under it', async () => {
+			await verified();
+			await approve(deps(), 'exp-0001', 'me');
+			await ship(deps(), 'exp-0001');
+			await verifiedFix();
+			await approve(deps(), 'exp-0002', 'me');
+			await assert.rejects(merge(deps(), 'exp-0002'), (e: unknown) => e instanceof StageError && e.code === 'merge-experiment-live');
+			const result = await tick({ ...deps(), proposer: { propose: async () => assert.fail('unused') } } as never);
+			assert.equal(result.step, 'measure');
+			assert.deepEqual(promoted, []);
+		});
+
+		it('records an abort when the fix no longer merges', async () => {
+			await verifiedFix();
+			await approve(deps(), 'exp-0002', 'me');
+			const result = await merge(deps({ promote: async () => Promise.reject(new Error('conflict')) }), 'exp-0002');
+			assert.equal(result.outcome, 'aborted');
+			const last = (await ledger.history()).at(-1)!;
+			assert.equal(last.type, 'aborted');
+			assert.equal(last.payload.stage, 'merge');
+		});
+
+		it('does not count merged fixes towards auto mode', async () => {
+			const { autonomyEntry } = await import('../src/index.ts');
+			for (const id of ['exp-0002', 'exp-0003', 'exp-0004']) {
+				await verifiedFix(id);
+				await approve(deps(), id, 'me');
+				await merge(deps(), id);
+			}
+			const entry = autonomyEntry(await ledger.history());
+			assert.equal(entry.checks.find((c) => c.id === 'gated-loops')!.met, false);
 		});
 	});
 
