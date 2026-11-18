@@ -48,6 +48,9 @@ describe('fixes (M6)', { concurrency: 3 }, () => {
 		const source = join(fixtures, 'site');
 		cpSync(source, dir, { recursive: true, filter: (src) => !['dist', '.lab', 'ledger.jsonl'].includes(relative(source, src).split('/').at(-1)!) });
 		git(dir, ['init', '-q']);
+		// The lab commits a merged fix as the repository's own user, as on a real site.
+		git(dir, ['config', 'user.name', 'site owner']);
+		git(dir, ['config', 'user.email', 'owner@example.invalid']);
 		if (flaw) git(dir, ['apply', join(fixtures, 'breakages', flaw, 'patch.diff')]);
 		git(dir, ['add', '-A']);
 		git(dir, ['commit', '-q', '-m', flaw ? `flaw: ${flaw}` : 'baseline']);
@@ -117,7 +120,8 @@ describe('fixes (M6)', { concurrency: 3 }, () => {
 		await approve(live, 'fix-contrast', 'reviewer');
 		const second = await tick({ ...iteration(dir, config, experiment), ...live });
 		assert.equal(second.step, 'merge');
-		assert.equal((second as { result: { outcome: string } }).result.outcome, 'merged');
+		const merged = (second as { result: { outcome: string; reason: string } }).result;
+		assert.equal(merged.outcome, 'merged', merged.reason);
 		assert.deepEqual(shipped, []);
 		assert.equal(git(dir, ['log', '-1', '--format=%s']), 'lab: fix fix-contrast');
 		assert.equal((await live.ledger.history()).at(-1)!.type, 'merged');
