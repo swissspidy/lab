@@ -3,16 +3,20 @@ import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
-import type { CheckEvidence, CheckResult, Gate, LabConfig, RunningSite, Verifier, VerifyInput, VerifyReport } from '@lab/core';
+import type { CheckEvidence, CheckResult, Finding, Gate, LabConfig, Observer, RunningSite, Verifier, VerifyInput, VerifyReport } from '@lab/core';
 import { sitePages } from '@lab/core';
 import { runAcceptanceCheck } from './acceptance.ts';
 import { loadInvariants, runInvariant } from './invariants.ts';
 import type { Invariant, InvariantKind } from './invariants.ts';
+import { findingsOf } from './findings.ts';
+import type { SiteRun } from './findings.ts';
 import { measurePage, newContext, screenshot } from './measure.ts';
 import type { PageMeasurement } from './measure.ts';
 
 export type { Invariant, InvariantContext, InvariantKind } from './invariants.ts';
 export { loadInvariants } from './invariants.ts';
+export { findingsOf } from './findings.ts';
+export type { SiteRun } from './findings.ts';
 
 const axeSource = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -59,11 +63,54 @@ async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>
 const vpName = (v: Viewport) => `${v.width}x${v.height}`;
 const where = (m: PageMeasurement) => `${m.page} at ${m.viewport}`;
 
-interface SuiteRun {
+interface SuiteRun extends SiteRun {
 	pages: string[];
-	measurements: PageMeasurement[];
 	invariants: Map<string, Array<{ viewport: string; passed: boolean; message: string; screenshot?: string; console: string[] }>>;
-	deadLinks: string[];
+}
+
+/** Every page at every viewport, and every same-site link: what findings and budgets are made of. */
+async function measureSite(browser: Browser, site: RunningSite, config: LabConfig, concurrency: number): Promise<SiteRun & { pages: string[] }> {
+	const pages = sitePages(config, site.root);
+	const jobs = pages.flatMap((page) => config.viewports.map((viewport) => ({ page, viewport })));
+	const measurements = await pool(jobs, concurrency, (j) => measurePage(browser, site.url, j.page, j.viewport, axeSource));
+	const targets = [...new Set(measurements.flatMap((m) => m.links))];
+	const statuses = await pool(targets, 8, async (url) => {
+		try {
+			return (await fetch(url, { method: 'GET', redirect: 'manual' })).status;
+		} catch {
+			return 0;
+		}
+	});
+	const deadLinks = targets.filter((_, i) => !(statuses[i]! >= 200 && statuses[i]! < 400)).map((u) => u.replace(site.url, ''));
+	return { pages, measurements, deadLinks };
+}
+
+export interface BrowserObserverOptions {
+	config: LabConfig;
+	browser?: Browser;
+	concurrency?: number;
+}
+
+/** The built-in observer: the verifier's own page measurements, on the baseline alone, as findings. */
+export class BrowserObserver implements Observer {
+	readonly config: LabConfig;
+	readonly concurrency: number;
+	private readonly sharedBrowser: Browser | undefined;
+
+	constructor(options: BrowserObserverOptions) {
+		this.config = options.config;
+		this.sharedBrowser = options.browser;
+		this.concurrency = options.concurrency ?? 4;
+	}
+
+	async observe(site: RunningSite): Promise<Finding[]> {
+		const browser = this.sharedBrowser ?? (await chromium.launch());
+		try {
+			return findingsOf(await measureSite(browser, site, this.config, this.concurrency), this.config.budgets);
+		} finally {
+			if (!this.sharedBrowser) await browser.close();
+		}
+	}
 }
 
 /**
@@ -96,10 +143,8 @@ export class BrowserVerifier implements Verifier {
 	}
 
 	private async suite(browser: Browser, site: RunningSite, invariants: Invariant[], label: string, evidenceDir: string): Promise<SuiteRun> {
-		const pages = sitePages(this.config, site.root);
+		const { pages, measurements, deadLinks } = await measureSite(browser, site, this.config, this.concurrency);
 		const viewports = this.config.viewports;
-		const jobs = pages.flatMap((page) => viewports.map((viewport) => ({ page, viewport })));
-		const measurements = await pool(jobs, this.concurrency, (j) => measurePage(browser, site.url, j.page, j.viewport, axeSource));
 		const invJobs = invariants.flatMap((inv) => viewports.map((viewport) => ({ inv, viewport })));
 		const outcomes = await pool(invJobs, this.concurrency, (j) =>
 			runInvariant(browser, site.url, j.inv, j.viewport, join(evidenceDir, `${label}-invariant-${j.inv.id}-${vpName(j.viewport)}.png`)),
@@ -110,15 +155,6 @@ export class BrowserVerifier implements Verifier {
 			list.push({ viewport: vpName(job.viewport), ...outcomes[i]! });
 			byId.set(job.inv.id, list);
 		}
-		const targets = [...new Set(measurements.flatMap((m) => m.links))];
-		const statuses = await pool(targets, 8, async (url) => {
-			try {
-				return (await fetch(url, { method: 'GET', redirect: 'manual' })).status;
-			} catch {
-				return 0;
-			}
-		});
-		const deadLinks = targets.filter((_, i) => !(statuses[i]! >= 200 && statuses[i]! < 400)).map((u) => u.replace(site.url, ''));
 		return { pages, measurements, invariants: byId, deadLinks };
 	}
 
@@ -192,6 +228,25 @@ export class BrowserVerifier implements Verifier {
 			...(evidence && Object.keys(evidence).length > 0 ? { evidence } : {}),
 		});
 
+		const baseFindings = findingsOf(base, this.config.budgets);
+		const varFindings = findingsOf(varRun, this.config.budgets);
+		const fix = spec.kind === 'fix';
+		const cited = new Set(spec.evidence ?? []);
+		// A fix is proposed because the baseline fails a check. Baseline sanity
+		// tolerates a failing budget only when every finding behind it is one
+		// the fix cites: anything else still means the suite cannot be trusted.
+		const expected = (check: string): Finding[] | null => {
+			if (!fix) return null;
+			const behind = baseFindings.filter((f) => f.check === check);
+			return behind.length > 0 && behind.every((f) => cited.has(f.id)) ? behind : null;
+		};
+		const sane = (check: string, passed: boolean, message: string): CheckResult => {
+			const known = passed ? null : expected(check);
+			return known
+				? result('baseline', `baseline.${check}`, true, `Fails on the baseline, as the fix expects: ${known.map((f) => f.id).join(', ')}.`)
+				: result('baseline', `baseline.${check}`, passed, message);
+		};
+
 		// Baseline sanity: the same suite, on the baseline, in this run.
 		const baselineResults: CheckResult[] = [];
 		for (const [id, outcomes] of base.invariants) {
@@ -199,9 +254,9 @@ export class BrowserVerifier implements Verifier {
 			baselineResults.push(result('baseline', `baseline.invariants.${id}`, failed.length === 0, failed.length ? failed.map((o) => `${o.viewport}: ${o.message}`).join(' | ') : outcomes[0]!.message, failed[0]?.screenshot ? { screenshot: failed[0].screenshot, console: failed[0].console } : undefined));
 		}
 		for (const b of this.budgetChecks(base, null)) {
-			baselineResults.push(result('baseline', `baseline.${b.check}`, b.failing.length === 0, b.failing.length ? b.message : b.passMessage));
+			baselineResults.push(sane(b.check, b.failing.length === 0, b.failing.length ? b.message : b.passMessage));
 		}
-		baselineResults.push(result('baseline', 'baseline.budgets.dead-links', base.deadLinks.length === 0, base.deadLinks.length ? `Dead links: ${base.deadLinks.join(', ')}` : 'Every same-site link resolves.'));
+		baselineResults.push(sane('budgets.dead-links', base.deadLinks.length === 0, base.deadLinks.length ? `Dead links: ${base.deadLinks.join(', ')}` : 'Every same-site link resolves.'));
 		const baselinePassed = baselineResults.every((r) => r.passed);
 
 		const results: CheckResult[] = [];
@@ -255,6 +310,21 @@ export class BrowserVerifier implements Verifier {
 			results.push(result('acceptance', `acceptance.${i}`, outcome.passed, `“${criterion}” ${outcome.message}`, outcome.passed ? undefined : { ...(outcome.screenshot ? { screenshot: outcome.screenshot } : {}), console: outcome.console }));
 		}
 
-		return { passed: baselinePassed && results.every((r) => r.passed), baselinePassed, results, baselineResults };
+		// Fix: every cited finding is on the baseline and gone from the variant, and nothing new appeared.
+		if (fix) {
+			const before = new Set(baseFindings.map((f) => f.id));
+			const after = new Set(varFindings.map((f) => f.id));
+			const absent = [...cited].filter((id) => !before.has(id));
+			const remaining = [...cited].filter((id) => before.has(id) && after.has(id));
+			const problems = [
+				absent.length ? `not on the baseline, so nothing to fix: ${absent.join(', ')}` : '',
+				remaining.length ? `still on the variant: ${varFindings.filter((f) => remaining.includes(f.id)).map((f) => `${f.id} (${f.summary})`).join('; ')}` : '',
+			].filter(Boolean);
+			results.push(result('fix', 'fix.resolved', problems.length === 0, problems.length ? `The fix does not remove what it cites: ${problems.join('; ')}.` : `Gone from the variant: ${[...cited].join(', ')}.`));
+			const added = varFindings.filter((f) => !before.has(f.id));
+			results.push(result('fix', 'fix.no-new-findings', added.length === 0, added.length ? `The variant has findings the baseline does not: ${added.map((f) => `${f.id} (${f.summary})`).join('; ')}.` : 'The variant has no finding the baseline does not.'));
+		}
+
+		return { passed: baselinePassed && results.every((r) => r.passed), baselinePassed, results, baselineResults, findings: { baseline: baseFindings, variant: varFindings } };
 	}
 }

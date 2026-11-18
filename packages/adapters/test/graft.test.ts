@@ -22,6 +22,21 @@ describe('Graft spec adapter', () => {
 		assert.deepEqual(back, spec);
 	});
 
+	it('round-trips a fix and its evidence, and writes neither for an experiment that cites nothing', () => {
+		const fix: ExperimentSpec = { ...spec, kind: 'fix', evidence: ['a11y.color-contrast@index.html', 'layout.overflow@pricing.html'], expectedEffect: 'none' };
+		const md = toGraftMarkdown(fix);
+		assert.match(md, /## Kind\n\nfix\n\n## Evidence\n\n- a11y\.color-contrast@index\.html\n- layout\.overflow@pricing\.html\n/);
+		const { spec: back, diagnostics } = fromGraftMarkdown(md);
+		assert.deepEqual(diagnostics, []);
+		assert.deepEqual(back, fix);
+		// An id is written as the finding has it: a page name with two spaces keeps both.
+		const spaced: ExperimentSpec = { ...fix, evidence: ['layout.overflow@my  page.html'] };
+		assert.deepEqual(fromGraftMarkdown(toGraftMarkdown(spaced)).spec?.evidence, ['layout.overflow@my  page.html']);
+		assert.doesNotMatch(toGraftMarkdown(spec), /## (Kind|Evidence)/);
+		const bad = fromGraftMarkdown(md.replace('## Kind\n\nfix', '## Kind\n\npatch'));
+		assert.deepEqual(bad.diagnostics.map((d) => d.code), ['graft-spec-kind']);
+	});
+
 	it('keeps literal {#…} text and numeric-looking ids as they are', () => {
 		const odd = { ...spec, id: '123', acceptance: ['Keep {#install} as typed.', 'Second.'], checks: [] };
 		const { spec: back, diagnostics } = fromGraftMarkdown(toGraftMarkdown(odd));

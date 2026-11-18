@@ -1,0 +1,13 @@
+diff --git a/src/styles/site.css b/src/styles/site.css
+index eae7086..5d6e7f8 100644
+--- a/src/styles/site.css
++++ b/src/styles/site.css
+@@ -25,7 +25,7 @@ a { color: var(--accent); }
+ }
+ .command { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+ code { font-family: ui-monospace, monospace; background: #f1f3f5; padding: .1rem .3rem; border-radius: 4px; }
+-.button { display: inline-block; padding: .6rem 1rem; border-radius: 6px; background: #9fbfe3; color: #fff; text-decoration: none; }
++.button { display: inline-block; padding: .6rem 1rem; border-radius: 6px; background: var(--accent); color: #fff; text-decoration: none; min-width: 1400px; }
+ .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+ .plan { border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+ .price { font-size: 1.25rem; font-weight: 700; }

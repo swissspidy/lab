@@ -194,3 +194,85 @@ describe('runIteration', () => {
 		assert.equal((await d.ledger.history()).length, 0);
 	});
 });
+
+describe('runIteration with an observer', () => {
+	let dir: string;
+	let started: string[];
+	let stopped: number;
+	const finding = { id: 'a11y.color-contrast@index.html', kind: 'accessibility' as const, page: 'index.html', viewports: ['1280x800'], summary: 'aXe rule color-contrast fails on 1 element(s): [".button"] at 1280x800.' };
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), 'lab-observe-'));
+		started = [];
+		stopped = 0;
+	});
+	afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+	const deps = (over: Partial<IterationDeps> = {}): IterationDeps => ({
+		config,
+		site: { dir, commit: 'c0ffee' },
+		ledger: new FileLedger(join(dir, 'ledger.jsonl')),
+		proposer: { propose: async () => spec() },
+		builder: { build: async (s, repo) => ({ experiment: s.id, base: repo, patch: PATCH, patchHash: hashPatch(PATCH) }) },
+		sandbox: {
+			start: async (ref) => {
+				started.push('patch' in ref ? 'variant' : 'baseline');
+				return { url: 'http://site/', stop: async () => void stopped++ } satisfies RunningSite;
+			},
+		},
+		verifier: { verify: async () => report() },
+		observer: { observe: async () => [finding] },
+		evidenceDir: join(dir, 'ev'),
+		...over,
+	});
+
+	it('shows the proposer what the baseline\'s checks found, and records the findings a spec cites', async () => {
+		let seen: unknown;
+		const d = deps({
+			proposer: {
+				propose: async (ctx) => {
+					seen = ctx.findings;
+					return { ...spec(), kind: 'fix', evidence: [finding.id], expectedEffect: 'none' };
+				},
+			},
+		});
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'verify_passed', result.reason);
+		assert.deepEqual(seen, [finding]);
+		const proposed = (await d.ledger.history())[0]!;
+		assert.deepEqual(proposed.payload.evidence, [finding]);
+		// The baseline started for Observe is the one Verify compares against.
+		assert.deepEqual(started, ['baseline', 'variant']);
+		assert.equal(stopped, 2);
+	});
+
+	it('refuses a spec that cites a finding the baseline does not have', async () => {
+		const d = deps({ proposer: { propose: async () => ({ ...spec(), evidence: ['a11y.made-up@index.html'] }) } });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /spec-evidence-unknown/);
+		assert.deepEqual((await d.ledger.history()).map((e) => e.type), ['proposed', 'aborted']);
+		assert.equal(stopped, 1, 'the observed baseline is stopped');
+	});
+
+	it('refuses any citation when nothing was observed', async () => {
+		const d = deps({ observer: undefined, proposer: { propose: async () => ({ ...spec(), evidence: ['a11y.made-up@index.html'] }) } });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /spec-evidence-unknown/);
+	});
+
+	it('stops before Propose when the baseline cannot be observed', async () => {
+		let asked = false;
+		const d = deps({
+			observer: { observe: async () => Promise.reject(new StageError('sandbox-build-failed', 'no build')) },
+			proposer: { propose: async () => ((asked = true), spec()) },
+		});
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /^observe-failed: .*sandbox-build-failed/);
+		assert.equal(asked, false);
+		assert.deepEqual(await d.ledger.history(), []);
+		assert.equal(stopped, 1);
+	});
+});

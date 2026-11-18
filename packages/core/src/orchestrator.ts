@@ -6,7 +6,7 @@ import { checkPatch, hashPatch } from './patch.ts';
 import { validateSpec } from './spec.ts';
 import { StageError } from './types.ts';
 import { listSiteFiles, sitePages, websiteHost } from './website.ts';
-import type { BucketStats, Builder, CheckResult, Diagnostic, ExperimentSpec, LabConfig, Ledger, LedgerEvent, Proposer, RepoRef, RunningSite, Sandbox, SpecCheck, Verifier, VerifyReport } from './types.ts';
+import type { BucketStats, Builder, CheckResult, Diagnostic, ExperimentSpec, Finding, LabConfig, Ledger, LedgerEvent, Observer, Proposer, RepoRef, RunningSite, Sandbox, SpecCheck, Verifier, VerifyReport } from './types.ts';
 
 export interface IterationDeps {
 	config: LabConfig;
@@ -25,6 +25,12 @@ export interface IterationDeps {
 	 * provides one; without it, only the static gate enforces permissions.
 	 */
 	specCheck?: SpecCheck;
+	/**
+	 * Runs the lab's checks on the baseline before Propose, so proposals cite
+	 * what is actually wrong and fixes can be checked. Without it, the
+	 * proposer sees no findings.
+	 */
+	observer?: Observer;
 }
 
 export type IterationOutcome = 'verify_passed' | 'verify_failed' | 'aborted';
@@ -64,62 +70,78 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 		events,
 	});
 
-	// Observe.
+	// Observe: the ledger, and with an observer, the baseline's findings. The
+	// baseline started here is the one Verify compares against.
 	const history = await ledger.history();
-
-	// Propose.
-	let raw: ExperimentSpec;
-	try {
-		raw = await deps.proposer.propose({ site, config, baseline: deps.baseline ?? null, history });
-	} catch (error) {
-		// Nothing to record against: no experiment id exists yet.
-		const { code, message } = describe(error);
-		return result(null, 'aborted', `${code}: ${message}`);
-	}
-	const { spec, diagnostics } = validateSpec(raw, config, history);
-	const id = typeof raw?.id === 'string' && /^[a-z0-9][a-z0-9-]{1,62}$/.test(raw.id) && !history.some((e) => e.experiment === raw.id) ? raw.id : null;
-	if (!spec) {
-		const reason = diagnostics.map((d) => `${d.code}: ${d.message}`).join(' ');
-		if (id) {
-			await append({ type: 'proposed', experiment: id, siteCommit: site.commit, patchHash: null, payload: { source: raw.source === 'visitors' ? 'visitors' : 'agent', spec: raw } });
-			await append({ type: 'aborted', experiment: id, siteCommit: site.commit, patchHash: null, payload: { stage: 'propose', diagnostics } });
-		}
-		return result(id, 'aborted', reason);
-	}
-	await append({ type: 'proposed', experiment: spec.id, siteCommit: site.commit, patchHash: null, payload: { source: spec.source, spec } });
-
-	// Build.
-	let variant;
-	try {
-		variant = await deps.builder.build(spec, site);
-	} catch (error) {
-		const failure = describe(error);
-		await append({ type: 'aborted', experiment: spec.id, siteCommit: site.commit, patchHash: null, payload: { stage: 'build', ...failure } });
-		return result(spec.id, 'aborted', `${failure.code}: ${failure.message}`);
-	}
-	const patchHash = hashPatch(variant.patch);
-	const base = { experiment: spec.id, siteCommit: site.commit, patchHash };
-	await append({ ...base, type: 'built', payload: { patch: variant.patch } });
-
-	// Static patch gate: the orchestrator reads the patch itself.
-	const staticResults = checkPatch(variant.patch, config, spec.permissions);
-	if (failuresOf(staticResults).length > 0) {
-		const failures = failuresOf(staticResults);
-		await append({ ...base, type: 'verify_failed', payload: { failures, results: staticResults } });
-		return result(spec.id, 'verify_failed', failures.map((f) => f.check).join(', '), failures);
-	}
-
-	// Sandbox.
 	const running: RunningSite[] = [];
 	try {
-		let baselineSite: RunningSite;
+		let baselineSite: RunningSite | undefined;
+		let findings: Finding[] = [];
+		if (deps.observer) {
+			try {
+				baselineSite = await deps.sandbox.start(site);
+				running.push(baselineSite);
+				findings = await deps.observer.observe(baselineSite);
+			} catch (error) {
+				// Nothing to record against: no experiment id exists yet.
+				const { code, message } = describe(error);
+				return result(null, 'aborted', `observe-failed: The baseline could not be observed (${code}: ${message}).`);
+			}
+		}
+
+		// Propose.
+		let raw: ExperimentSpec;
 		try {
-			baselineSite = await deps.sandbox.start(site);
-			running.push(baselineSite);
+			raw = await deps.proposer.propose({ site, config, baseline: deps.baseline ?? null, history, findings });
+		} catch (error) {
+			const { code, message } = describe(error);
+			return result(null, 'aborted', `${code}: ${message}`);
+		}
+		// Without an observer there are no findings, so any citation is refused.
+		const { spec, diagnostics } = validateSpec(raw, config, history, findings);
+		const id = typeof raw?.id === 'string' && /^[a-z0-9][a-z0-9-]{1,62}$/.test(raw.id) && !history.some((e) => e.experiment === raw.id) ? raw.id : null;
+		if (!spec) {
+			const reason = diagnostics.map((d) => `${d.code}: ${d.message}`).join(' ');
+			if (id) {
+				await append({ type: 'proposed', experiment: id, siteCommit: site.commit, patchHash: null, payload: { source: raw.source === 'visitors' ? 'visitors' : 'agent', spec: raw } });
+				await append({ type: 'aborted', experiment: id, siteCommit: site.commit, patchHash: null, payload: { stage: 'propose', diagnostics } });
+			}
+			return result(id, 'aborted', reason);
+		}
+		const cited = findings.filter((f) => spec.evidence?.includes(f.id));
+		await append({ type: 'proposed', experiment: spec.id, siteCommit: site.commit, patchHash: null, payload: { source: spec.source, spec, ...(cited.length ? { evidence: cited } : {}) } });
+
+		// Build.
+		let variant;
+		try {
+			variant = await deps.builder.build(spec, site);
 		} catch (error) {
 			const failure = describe(error);
-			await append({ ...base, type: 'aborted', payload: { stage: 'sandbox', target: 'baseline', ...failure } });
-			return result(spec.id, 'aborted', `The baseline does not build: ${failure.message}`);
+			await append({ type: 'aborted', experiment: spec.id, siteCommit: site.commit, patchHash: null, payload: { stage: 'build', ...failure } });
+			return result(spec.id, 'aborted', `${failure.code}: ${failure.message}`);
+		}
+		const patchHash = hashPatch(variant.patch);
+		const base = { experiment: spec.id, siteCommit: site.commit, patchHash };
+		await append({ ...base, type: 'built', payload: { patch: variant.patch } });
+
+		// Static patch gate: the orchestrator reads the patch itself.
+		const staticResults = checkPatch(variant.patch, config, spec.permissions);
+		if (failuresOf(staticResults).length > 0) {
+			const failures = failuresOf(staticResults);
+			await append({ ...base, type: 'verify_failed', payload: { failures, results: staticResults } });
+			return result(spec.id, 'verify_failed', failures.map((f) => f.check).join(', '), failures);
+		}
+
+		// Sandbox.
+		if (!baselineSite) {
+			try {
+				baselineSite = await deps.sandbox.start(site);
+				running.push(baselineSite);
+			} catch (error) {
+				const failure = describe(error);
+				await append({ ...base, type: 'aborted', payload: { stage: 'sandbox', target: 'baseline', ...failure } });
+				return result(spec.id, 'aborted', `The baseline does not build: ${failure.message}`);
+			}
 		}
 		if (deps.specCheck) {
 			let problems: Diagnostic[];

@@ -5,15 +5,30 @@ import type { WebsiteHost } from './website.ts';
 /** Where a hypothesis came from. Only `agent` exists in v0; `visitors` is v1's morph clusters. */
 export type HypothesisSource = 'agent' | 'visitors';
 
+/**
+ * `experiment`: the effect on the metric is uncertain, so it is served to a
+ * share of visitors and measured. `fix`: it removes findings the lab can
+ * check offline (an aXe violation, a script error, sideways scroll), so it
+ * is verified in the sandbox and merged after approval, without traffic.
+ */
+export type SpecKind = 'experiment' | 'fix';
+
 export interface ExperimentSpec {
 	/** `exp-0007`. Unique within a site's ledger. */
 	id: string;
+	/** Absent means `experiment`, as in ledgers written before fixes existed. */
+	kind?: SpecKind;
+	/**
+	 * Ids of the findings on the baseline this spec addresses. A fix needs
+	 * at least one, and must remove each of them.
+	 */
+	evidence?: string[];
 	hypothesis: string;
 	/** One sentence: what changes. Mirrors a Graft spec's description. */
 	intent: string;
 	/** Objectively checkable criteria. Mirrors a Graft spec's acceptance criteria. */
 	acceptance: string[];
-	/** `<metric> up` or `<metric> down`. */
+	/** `<metric> up` or `<metric> down`; `none` for a fix, which is not measured. */
 	expectedEffect: string;
 	/** Paths the change is expected to touch. The scope check reads the patch, not this list. */
 	touches: string[];
@@ -95,15 +110,38 @@ export interface RunningSite {
 	stop(): Promise<void>;
 }
 
+export type FindingKind = 'accessibility' | 'errors' | 'layout' | 'performance';
+
+/**
+ * Something the lab's own checks found wrong on a running site. The id is
+ * stable across runs, so a spec can cite it and Verify can tell whether the
+ * variant still has it: `a11y.color-contrast@index.html`,
+ * `layout.overflow@pricing.html`, `errors.dead-link@docs.html#install`.
+ */
+export interface Finding {
+	id: string;
+	kind: FindingKind;
+	/** The page it is on, or the link target for a dead link. */
+	page: string;
+	/** Viewports it shows at, as `1280x800`. */
+	viewports: string[];
+	/** One line: what is wrong, with up to three examples. */
+	summary: string;
+	/** The budget check it fails on its own, if any: `budgets.overflow`. aXe findings have none. */
+	check?: string;
+}
+
 /** The context the Proposer sees. Site content inside it is untrusted data. */
 export interface Observation {
 	site: RepoRef;
 	config: LabConfig;
 	baseline: BucketStats | null;
 	history: LedgerEvent[];
+	/** What the lab's checks found on the baseline. Empty when no Observer ran. */
+	findings: Finding[];
 }
 
-export type Gate = 'static' | 'invariants' | 'budgets' | 'acceptance' | 'baseline';
+export type Gate = 'static' | 'invariants' | 'budgets' | 'acceptance' | 'fix' | 'baseline';
 
 export interface CheckEvidence {
 	screenshot?: string;
@@ -138,6 +176,8 @@ export interface VerifyReport {
 	results: CheckResult[];
 	/** Baseline results, gate `baseline`, one per check id. */
 	baselineResults: CheckResult[];
+	/** Findings on each site, in this run. */
+	findings?: { baseline: Finding[]; variant: Finding[] };
 }
 
 /** A stage failed in a way it can name. `code` is stable. */
@@ -244,6 +284,7 @@ export const LEDGER_EVENT_TYPES = [
 	'shipped',
 	'measured',
 	'kept',
+	'merged',
 	'reverted',
 	'aborted',
 ] as const;
@@ -275,8 +316,11 @@ export interface LedgerEvent {
  * what is appended, not what is read back.
  */
 export type LedgerPayloads = {
-	/** `spec` is the proposal as received; it may be the invalid one an abort records. */
-	proposed: { source: HypothesisSource; spec: unknown };
+	/**
+	 * `spec` is the proposal as received; it may be the invalid one an abort
+	 * records. `evidence` is the findings it cites, as observed then.
+	 */
+	proposed: { source: HypothesisSource; spec: unknown; evidence?: Finding[] };
 	built: { patch: string };
 	verify_passed: { results?: CheckResult[] };
 	verify_failed: { failures: CheckResult[]; results?: CheckResult[] };
@@ -284,6 +328,8 @@ export type LedgerPayloads = {
 	shipped: { share: number; plan?: unknown };
 	measured: { day: number; stats: BucketStats; probability: number; decision: Decision };
 	kept: { reason: string };
+	/** A fix, merged into the site's repository after approval. */
+	merged: { reason: string; verifiedCommit?: string };
 	reverted: { reason: 'guardrail' | 'decision' | 'kill'; detail?: string; stats?: BucketStats };
 	/** `stage` names where the experiment stopped; the rest says why. */
 	aborted: { stage: string; [key: string]: unknown };
@@ -308,6 +354,11 @@ export interface Diagnostic {
 
 export interface Proposer {
 	propose(ctx: Observation): Promise<ExperimentSpec>;
+}
+
+/** Runs the lab's checks on the baseline before anything is proposed. */
+export interface Observer {
+	observe(site: RunningSite): Promise<Finding[]>;
 }
 
 export interface Builder {

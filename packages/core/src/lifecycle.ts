@@ -59,13 +59,14 @@ export async function approve(deps: { ledger: Ledger; site: RepoRef; now?: () =>
 }
 
 export type LiveOutcome =
-	| { outcome: 'shipped' | 'kept' | 'reverted' | 'continue' | 'aborted'; experiment: string; reason: string }
+	| { outcome: 'shipped' | 'kept' | 'merged' | 'reverted' | 'continue' | 'aborted'; experiment: string; reason: string }
 	| { outcome: 'idle'; experiment: null; reason: string };
 
 export async function ship(deps: LiveDeps, id: string): Promise<LiveOutcome> {
 	const events = await deps.ledger.history();
 	const state = stateOf(events, id);
 	if (state !== 'approved') throw new StageError('ship-invalid-state', `${id} is ${state ? `at \`${state}\`` : 'not in the ledger'}; only an approved experiment can ship.`);
+	if (specFromLedger(events, id).kind === 'fix') throw new StageError('ship-fix', `${id} is a fix: it is merged, not shown to visitors. The next \`lab run\` merges it.`);
 	const live = liveExperiment(events);
 	if (live) throw new StageError('ship-experiment-live', `${live} is live. v0 runs one experiment at a time.`);
 	const variant = variantFromLedger(events, id, deps.site);
@@ -78,6 +79,40 @@ export async function ship(deps: LiveDeps, id: string): Promise<LiveOutcome> {
 	await deps.deployer.ship(variant, deps.config.traffic.share);
 	await deps.ledger.append({ ...base, type: 'shipped', payload: { share: deps.config.traffic.share, plan }, at: (deps.now?.() ?? new Date()).toISOString() });
 	return { outcome: 'shipped', experiment: id, reason: plan.reason };
+}
+
+/**
+ * Merges an approved fix into the site's repository. A fix is verified
+ * offline (Verify showed its findings gone and nothing new), so it needs no
+ * traffic. It waits while an experiment is live: merging would change the
+ * baseline under it. The variant passed to `promote` has the commit it was
+ * verified on as its base, so `promote` can refuse a site that changed
+ * since (gitPromote's `verifiedAt`). The site's own deploy publishes the
+ * merge.
+ */
+export async function merge(deps: Pick<LiveDeps, 'ledger' | 'site' | 'promote' | 'now'>, id: string): Promise<LiveOutcome> {
+	const events = await deps.ledger.history();
+	const state = stateOf(events, id);
+	if (state !== 'approved') throw new StageError('merge-invalid-state', `${id} is ${state ? `at \`${state}\`` : 'not in the ledger'}; only an approved fix can be merged.`);
+	const spec = specFromLedger(events, id);
+	if (spec.kind !== 'fix') throw new StageError('merge-not-fix', `${id} is an experiment: it ships to visitors and is kept only once measured.`);
+	const live = liveExperiment(events);
+	if (live) throw new StageError('merge-experiment-live', `${live} is live. A fix waits until it ends, so the baseline does not change under it.`);
+	// The variant as verified: its base is the commit it was built and checked on.
+	const built = events.find((e) => e.experiment === id && e.type === 'built')!;
+	const variant = { ...variantFromLedger(events, id, deps.site), base: { dir: deps.site.dir, commit: built.siteCommit } };
+	const base = { experiment: id, siteCommit: deps.site.commit, patchHash: variant.patchHash };
+	const at = (deps.now?.() ?? new Date()).toISOString();
+	try {
+		await deps.promote(variant);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		await deps.ledger.append({ ...base, type: 'aborted', at, payload: { stage: 'merge', reason: message } });
+		return { outcome: 'aborted', experiment: id, reason: `Could not merge: ${message}` };
+	}
+	const reason = `Verified fix for ${(spec.evidence ?? []).join(', ')}; merged without an experiment.`;
+	await deps.ledger.append({ ...base, type: 'merged', at, payload: { reason, verifiedCommit: built.siteCommit } });
+	return { outcome: 'merged', experiment: id, reason };
 }
 
 /**
@@ -149,18 +184,23 @@ export async function kill(deps: { deployer: Deployer; ledger: Ledger; site: Rep
 	}
 }
 
-export type TickResult = { step: 'measure' | 'ship'; result: LiveOutcome } | { step: 'iterate'; result: IterationResult } | { step: 'wait'; experiment: string; reason: string };
+export type TickResult = { step: 'measure' | 'ship' | 'merge'; result: LiveOutcome } | { step: 'iterate'; result: IterationResult } | { step: 'wait'; experiment: string; reason: string };
+
+/** Ships an approved experiment, or merges an approved fix. */
+async function release(deps: IterationDeps & LiveDeps, events: LedgerEvent[], id: string): Promise<TickResult> {
+	return specFromLedger(events, id).kind === 'fix' ? { step: 'merge', result: await merge(deps, id) } : { step: 'ship', result: await ship(deps, id) };
+}
 
 /**
  * One scheduled run of the loop: measure the live experiment if there is
- * one; otherwise ship an approved one; otherwise wait for an approval;
- * otherwise start a new iteration.
+ * one; otherwise ship an approved experiment or merge an approved fix;
+ * otherwise wait for an approval; otherwise start a new iteration.
  */
 export async function tick(deps: IterationDeps & LiveDeps): Promise<TickResult> {
 	const events = await deps.ledger.history();
 	if (liveExperiment(events)) return { step: 'measure', result: await measure(deps) };
 	for (const [id, state] of experimentStates(events)) {
-		if (state === 'approved') return { step: 'ship', result: await ship(deps, id) };
+		if (state === 'approved') return release(deps, events, id);
 	}
 	if (deps.config.autonomy !== 'propose-only') {
 		for (const [id, state] of experimentStates(events)) {
@@ -169,7 +209,7 @@ export async function tick(deps: IterationDeps & LiveDeps): Promise<TickResult> 
 				const entry = autonomyEntry(events);
 				if (entry.met) {
 					await approve(deps, id, 'auto');
-					return { step: 'ship', result: await ship(deps, id) };
+					return release(deps, await deps.ledger.history(), id);
 				}
 				const unmet = entry.checks.filter((c) => !c.met).map((c) => c.detail).join(' ');
 				return { step: 'wait', experiment: id, reason: `${id} passed Verify. Auto mode is not active yet: ${unmet} It waits for \`lab approve ${id}\`.` };

@@ -1,5 +1,67 @@
 # Progress
 
+## M6: Evidence and fixes (2026-11-18)
+
+Pascal compared the lab with Google's Stitch Loop and asked for two of its
+ideas: proposals grounded in evidence from the site, and loops for changes
+that need no traffic. M6 is in the brief.
+
+**Built**
+
+- `Finding` and the `Observer` stage in `@lab/core`. `BrowserObserver` in
+  `@lab/verify` reuses the verifier's page measurements on the baseline
+  alone and turns them into findings with stable ids
+  (`a11y.<rule>@<page>`, `errors.console@<page>`, `layout.overflow@<page>`,
+  `perf.lcp@<page>`, `errors.dead-link@<target>`, ...).
+- Observe in `runIteration`: with an observer, the baseline is built and
+  observed before Propose, and the same running baseline is what Verify
+  compares against. A baseline that cannot be observed stops the
+  iteration before anything is proposed (`observe-failed`).
+- `kind` and `evidence` on specs. `spec-evidence-unknown` refuses a cited id
+  the baseline does not have; a fix needs evidence (`spec-fix-evidence`)
+  and `expectedEffect: "none"`. The `proposed` event records the cited
+  findings as observed. Graft Markdown carries both as optional sections.
+- The `fix` gate: `fix.resolved` and `fix.no-new-findings`. Baseline sanity
+  tolerates a failing budget for a fix only when every finding behind it is
+  cited.
+- `merge()` and the `merged` event: an approved fix is committed to the
+  site's repository (`lab: fix <id>`), never shipped. `tick` merges it
+  after any live experiment ends. The ledger refuses a shipped fix
+  (`ledger-fix-shipped`) and a merged experiment
+  (`ledger-experiment-merged`).
+- The model proposer sees the findings and is told when to propose a fix.
+- `lab observe` lists the findings; `approve` and `status` say "merges" for
+  a fix; the report shows the kind, the cited findings and merges.
+- Six fix fixtures in `fixtures/fixes`, on flaws taken from existing
+  breakages (`contrast-failure`, `layout-overflow`).
+
+**Verified**
+
+- `npm run check`: 267 tests. New ones cover findings, spec validation,
+  the ledger rules, merge and its refusals, Observe in the orchestrator,
+  the proposer prompt, the Graft round trip and the report.
+- The M6 acceptance test (`fixtures/test/fixes.test.ts`) on the fixture
+  site with a real browser:
+  - `contrast` and `overflow` reach verify_passed, with their findings gone
+    from the variant;
+  - `does-not-fix` is rejected by `fix.resolved`, `adds-finding` by
+    `fix.no-new-findings`, `overflow-partial` aborts on
+    `baseline.budgets.overflow`, and `cites-absent` aborts on
+    `spec-evidence-unknown`;
+  - the contrast fix goes from Observe through approval to a `lab: fix`
+    commit, nothing is shipped, and observing the merged site finds no
+    contrast failure.
+- `npm run test:nextjs` still passes: experiments behave as before.
+
+**Not verified**
+
+- No real model has proposed a fix yet: the model path is tested with a
+  scripted provider only.
+- Performance findings (LCP, CLS) are measured in the sandbox, so a fix for
+  them can be flaky. No fixture covers one.
+- Experiments may cite findings but need not (question 19). No per-page
+  metric exists to ground a conversion experiment.
+
 ## After M5: the open questions, decided (2026-11-15)
 
 Pascal asked me to settle the open questions in `docs/QUESTIONS.md` myself.

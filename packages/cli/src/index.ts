@@ -24,7 +24,7 @@ import { AnthropicProvider, ModelBuilder, ModelProposer, ModelTweaker, ReplayBui
 import { CommandPublisher, FileState, FileTweakStore, MetricStore, RemoteTweakStore, OriginDeployer, ReferenceDeployer, RemoteMeter, RemoteState, StoreMeter, startCollector, startEdgeServer } from '@lab/deploy';
 import type { StateStore } from '@lab/deploy';
 import { CssInjectingProxy, LocalSandbox } from '@lab/sandbox';
-import { BrowserVerifier, loadInvariants } from '@lab/verify';
+import { BrowserObserver, BrowserVerifier, loadInvariants } from '@lab/verify';
 import { GraftSpecCheck, GraftSpecProposer, assayInvariant, checkInvariantLock, compileInvariant, isAssayInvariant, recordingGraftSpecs, writeCompiledInvariant } from '@lab/adapters';
 import { writeReport } from '@lab/report';
 import { existsSync, readFileSync } from 'node:fs';
@@ -39,11 +39,15 @@ Commands:
   invariants compile [dir]  Compile every Assay invariant against the
                             baseline, stress-test and lock its checks, and
                             write them next to it. Review the diff and commit.
-  run --dry [dir]           One iteration, from Propose to Verify. Ships nothing.
+  observe [dir]             Build the site and list what the lab's checks find
+                            on it: the findings a fix can cite.
+  run --dry [dir]           One iteration, from Observe to Verify. Ships nothing.
   run [dir]                 One scheduled step: measure the live experiment, or
-                            ship an approved one, or start a new iteration.
-                            Run it from a scheduler, once per interval.
-  approve <id> [dir]        Approve a verified experiment for shipping.
+                            ship an approved experiment or merge an approved
+                            fix, or start a new iteration. Run it from a
+                            scheduler, once per interval.
+  approve <id> [dir]        Approve a verified experiment for shipping, or a
+                            verified fix for merging.
   status [dir]              The live experiment, its numbers and the deploy state.
   kill [dir]                Stop every variant now: share 0%, no deploy.
   report [dir]              Write the ledger as a static HTML page (--out).
@@ -129,7 +133,7 @@ async function main(argv: string[]): Promise<number> {
 		process.stdout.write(`${USAGE}\n`);
 		return command || values.help ? 0 : 64;
 	}
-	const known = ['doctor', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect', 'tweak', 'invariants'];
+	const known = ['doctor', 'observe', 'run', 'approve', 'status', 'kill', 'publish', 'serve', 'report', 'collect', 'tweak', 'invariants'];
 	if (!known.includes(command)) {
 		process.stderr.write(`Unknown command \`${command}\`.\n\n${USAGE}\n`);
 		return 64;
@@ -232,6 +236,7 @@ async function main(argv: string[]): Promise<number> {
 				builder: experiment ? new ReplayBuilder(experiment) : new ModelBuilder({ provider: provider!, config }),
 				sandbox: new LocalSandbox({ config }),
 				verifier: new BrowserVerifier({ config, siteDir, invariantKinds: [assayInvariant] }),
+				observer: new BrowserObserver({ config }),
 				specCheck: new GraftSpecCheck(),
 				evidenceDir: resolve(values.evidence ?? resolve(siteDir, 'lab', 'evidence')),
 			});
@@ -241,7 +246,12 @@ async function main(argv: string[]): Promise<number> {
 					deployer,
 					meter: meter(),
 					decider: new BetaBinomialDecider(config),
-					promote: async (variant) => void gitPromote(siteDir, variant),
+					promote: async (variant) => {
+						const fix = specFromLedger(await ledger.history(), variant.experiment).kind === 'fix';
+						// A fix is committed only onto the site it was verified on.
+						if (fix) gitPromote(siteDir, variant, `lab: fix ${variant.experiment}`, { verifiedAt: variant.base.commit });
+						else gitPromote(siteDir, variant);
+					},
 				});
 				process.stdout.write(values.json ? `${JSON.stringify(result, null, '\t')}\n` : summarizeTick(result));
 				if (result.step === 'iterate') return result.result.outcome === 'verify_passed' ? 0 : result.result.outcome === 'verify_failed' ? 1 : 2;
@@ -278,9 +288,23 @@ async function main(argv: string[]): Promise<number> {
 			}
 			return 0;
 		}
+		case 'observe': {
+			const baseline = await new LocalSandbox({ config }).start(site);
+			let findings;
+			try {
+				findings = await new BrowserObserver({ config }).observe(baseline);
+			} finally {
+				await baseline.stop();
+			}
+			if (values.json) process.stdout.write(`${JSON.stringify(findings, null, '\t')}\n`);
+			else if (findings.length === 0) process.stdout.write('No findings: the baseline passes every check the lab runs on its own.\n');
+			else for (const f of findings) process.stdout.write(`${f.id} (${f.kind})\n  ${f.summary}\n`);
+			return 0;
+		}
 		case 'approve': {
 			const event = await approve({ ledger, site }, approveId!, values.by ?? process.env.USER ?? 'unknown');
-			process.stdout.write(`${event.experiment}: approved by ${String(event.payload.by)}. The next \`lab run\` ships it.\n`);
+			const fix = specFromLedger(await ledger.history(), event.experiment).kind === 'fix';
+			process.stdout.write(`${event.experiment}: approved by ${String(event.payload.by)}. The next \`lab run\` ${fix ? 'merges it' : 'ships it'}.\n`);
 			return 0;
 		}
 		case 'status': {
@@ -299,7 +323,10 @@ async function main(argv: string[]): Promise<number> {
 			}
 			const waiting = [...experimentStates(events)].filter(([, s]) => s === 'verify_passed' || s === 'approved');
 			out.waiting = waiting;
-			for (const [id, s] of waiting) lines.push(`${id}: ${s === 'approved' ? 'approved, ships on the next run' : 'verified, waiting for approval'}`);
+			for (const [id, s] of waiting) {
+				const fix = specFromLedger(events, id).kind === 'fix';
+				lines.push(`${id}: ${fix ? 'fix, ' : ''}${s === 'approved' ? `approved, ${fix ? 'merges' : 'ships'} on the next run` : 'verified, waiting for approval'}`);
+			}
 			process.stdout.write(values.json ? `${JSON.stringify(out, null, '\t')}\n` : `${lines.join('\n')}\n`);
 			return 0;
 		}

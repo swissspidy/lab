@@ -1,4 +1,4 @@
-import type { Diagnostic, ExperimentSpec, LabConfig, LedgerEvent } from './types.ts';
+import type { Diagnostic, ExperimentSpec, Finding, LabConfig, LedgerEvent } from './types.ts';
 import { SLOT, WEBSITE_SCOPES, isWebsiteScope } from './website.ts';
 
 const ID = /^[a-z0-9][a-z0-9-]{1,62}$/;
@@ -119,26 +119,44 @@ export function validateChecks(checks: unknown, count: number, error: (code: str
 }
 
 /**
- * Checks a proposed spec against the config and the ledger. A spec with
- * errors never reaches Build.
+ * Checks a proposed spec against the config and the ledger, and, when the
+ * baseline was observed, its cited evidence against the findings. A spec
+ * with errors never reaches Build.
  */
-export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEvent[] = []): { spec: ExperimentSpec | null; diagnostics: Diagnostic[] } {
+export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEvent[] = [], findings?: readonly Finding[]): { spec: ExperimentSpec | null; diagnostics: Diagnostic[] } {
 	const diagnostics: Diagnostic[] = [];
 	const error = (code: string, path: string, message: string) => diagnostics.push({ code, severity: 'error', path, message });
 	if (!isObject(raw)) {
 		error('spec-not-object', '', 'A spec must be a JSON object.');
 		return { spec: null, diagnostics };
 	}
-	const allowed = new Set(['id', 'hypothesis', 'intent', 'acceptance', 'expectedEffect', 'touches', 'mount', 'permissions', 'source', 'checks']);
+	const allowed = new Set(['id', 'kind', 'evidence', 'hypothesis', 'intent', 'acceptance', 'expectedEffect', 'touches', 'mount', 'permissions', 'source', 'checks']);
 	for (const key of Object.keys(raw)) if (!allowed.has(key)) error('spec-unknown-key', key, `Unknown key \`${key}\`.`);
 	if (typeof raw.id !== 'string' || !ID.test(raw.id)) error('spec-id', 'id', '`id` must look like `exp-0007`: lowercase letters, digits and dashes.');
 	for (const key of ['hypothesis', 'intent'] as const) if (!isText(raw[key])) error('spec-missing-text', key, `\`${key}\` must be a non-empty sentence.`);
 	if (!Array.isArray(raw.acceptance) || raw.acceptance.length === 0 || !raw.acceptance.every(isText)) {
 		error('spec-acceptance', 'acceptance', '`acceptance` must list at least one criterion.');
 	}
-	const effect = new RegExp(`^${config.metric.id} (up|down)$`);
-	if (typeof raw.expectedEffect !== 'string' || !effect.test(raw.expectedEffect)) {
-		error('spec-effect', 'expectedEffect', `\`expectedEffect\` must be \`${config.metric.id} up\` or \`${config.metric.id} down\`.`);
+	if (raw.kind !== undefined && raw.kind !== 'experiment' && raw.kind !== 'fix') error('spec-kind', 'kind', '`kind` must be `experiment` or `fix`.');
+	const fix = raw.kind === 'fix';
+	if (raw.evidence !== undefined && !(Array.isArray(raw.evidence) && raw.evidence.every((id) => isText(id) && !/[\r\n]/.test(id)) && new Set(raw.evidence).size === raw.evidence.length)) {
+		error('spec-evidence', 'evidence', '`evidence` must list finding ids, each once and on one line.');
+	} else if (Array.isArray(raw.evidence) && findings) {
+		const known = new Set(findings.map((f) => f.id));
+		for (const [i, id] of (raw.evidence as string[]).entries()) {
+			if (!known.has(id)) error('spec-evidence-unknown', `evidence.${i}`, `No finding \`${id}\` on the baseline. Cite ids from the findings as listed.`);
+		}
+	}
+	if (fix && !(Array.isArray(raw.evidence) && raw.evidence.length > 0)) {
+		error('spec-fix-evidence', 'evidence', 'A fix must cite the findings it removes in `evidence`. Without one, propose an experiment.');
+	}
+	if (fix) {
+		if (raw.expectedEffect !== 'none') error('spec-effect', 'expectedEffect', 'A fix is not measured: its `expectedEffect` must be `none`.');
+	} else {
+		const effect = new RegExp(`^${config.metric.id} (up|down)$`);
+		if (typeof raw.expectedEffect !== 'string' || !effect.test(raw.expectedEffect)) {
+			error('spec-effect', 'expectedEffect', `\`expectedEffect\` must be \`${config.metric.id} up\` or \`${config.metric.id} down\`.`);
+		}
 	}
 	if (!Array.isArray(raw.touches) || !raw.touches.every(isText)) error('spec-touches', 'touches', '`touches` must list the paths the change touches.');
 	if (typeof raw.mount !== 'string' || !SLOT.test(raw.mount)) error('spec-mount', 'mount', '`mount` must be `site`, or the slot of one page, such as `page.index` or `page.docs`.');

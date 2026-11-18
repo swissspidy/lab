@@ -3,10 +3,12 @@
 An open-source loop that lets an agent improve a live website on its own,
 and never ships a change that has not been verified.
 
-One iteration: propose a change, build it as a variant, test it in a
-sandbox, verify it against compiled checks, serve it to a slice of traffic,
-measure one metric, then keep or revert. Every step goes into an
-append-only ledger in the site's repository.
+One iteration: observe what the lab's checks find on the site, propose a
+change, build it as a variant, test it in a sandbox, verify it against
+compiled checks, serve it to a slice of traffic, measure one metric, then
+keep or revert. A change that only removes what the checks found (a fix)
+skips the traffic: it is verified offline and merged once approved. Every
+step goes into an append-only ledger in the site's repository.
 
 "lab" is a working name.
 
@@ -42,7 +44,7 @@ ends in `verify_passed`. The second changes a price and ends in
 
 ## Status
 
-All six milestones have run, on a local Next.js site with synthetic traffic
+The brief's six milestones have run, on a local Next.js site with synthetic traffic
 and a simulated clock:
 
 - M4: three experiments went through verify, approval, ship, measure and
@@ -50,6 +52,9 @@ and a simulated clock:
   rejected.
 - M5 (rehearsal): after a kill switch test, the lab ran seven days in `auto`
   mode with no approvals but its own. See [docs/WEEK-ONE.md](docs/WEEK-ONE.md).
+- M6 (added after M5): proposals cite findings from the baseline's own
+  checks, and fixes for two planted flaws were verified and merged without
+  traffic on the fixture site. See [Fixes](#fixes).
 
 Nothing has met real visitors or a real model yet. See
 [docs/PROGRESS.md](docs/PROGRESS.md) and the run's report,
@@ -102,9 +107,10 @@ one step:
    running.
 2. Otherwise, if an experiment is approved, ship it to `traffic.share` of
    visitors, unless the site's traffic cannot reach the planned sample size
-   within `traffic.maxDays`.
-3. Otherwise, if an experiment passed Verify, wait for `lab approve <id>`.
-4. Otherwise, start a new iteration: propose, build, verify.
+   within `traffic.maxDays`. If a fix is approved, merge it.
+3. Otherwise, if an experiment or a fix passed Verify, wait for
+   `lab approve <id>`.
+4. Otherwise, start a new iteration: observe, propose, build, verify.
 
 `lab status` shows where things stand. The reference host (`lab publish`,
 `lab serve`) serves the baseline and the variant, buckets visitors with a
@@ -151,6 +157,59 @@ is kept about 8% of the time (100 seeded simulations). Raise
 small real effects (numbers above). A sequential test would be the next
 step.
 
+## Fixes
+
+Before proposing anything, the lab builds the baseline and runs its own
+checks on it: aXe, console errors, failed requests, page status, sideways
+scroll, LCP, CLS and dead links, at every viewport. What they find are
+findings, each with an id that stays the same from run to run:
+
+```sh
+npm run lab -- observe path/to/site
+```
+
+```
+a11y.color-contrast@index.html (accessibility)
+  aXe rule color-contrast fails on 1 element(s): [".button"] at 1280x800, 390x844.
+layout.overflow@pricing.html (layout)
+  The page scrolls sideways at 1280x800, 390x844.
+```
+
+The proposer sees the findings and cites the ones a change addresses in
+the spec's `evidence`. A citation of an id the baseline does not have is
+refused (`spec-evidence-unknown`).
+
+A spec with `kind: "fix"` must cite at least one finding
+(`spec-fix-evidence`) and has `expectedEffect: "none"`. It goes through
+every gate an experiment does, plus the `fix` gate:
+
+- `fix.resolved`: every cited finding is on the baseline and gone from the
+  variant;
+- `fix.no-new-findings`: the variant has no finding the baseline does not.
+
+Baseline sanity normally aborts when the baseline fails a budget, since a
+suite that fails on the baseline cannot judge a variant. For a fix it
+tolerates a failing budget when every finding behind it is cited, and only
+then: a fix for one page's sideways scroll, on a site where three pages
+scroll sideways, aborts with `baseline.budgets.overflow` until it cites all
+three.
+
+An effect that can be checked offline needs no visitors, so an approved fix
+is merged into the site's repository (`lab: fix <id>`) instead of shipped.
+It does not count towards `auto` mode, which needs completed experiments.
+It waits while an experiment is live, so the baseline does not change under
+it. It is merged only onto the site it was verified on: if anything
+outside `lab/` changed since, the merge is refused (`promote-site-changed`)
+and the next iteration can propose it again. The GitHub Action applies the same rule when it
+pushes: it rebases its commits onto what others pushed since checkout, but
+not a merged fix onto changes to the site outside `lab/`. The ledger refuses a shipped fix (`ledger-fix-shipped`) and a merged
+experiment (`ledger-experiment-merged`). The site's own deployment, or
+`lab publish` on the reference host, publishes the merge.
+
+An experiment may cite findings too, when they support its hypothesis; it
+does not have to. The lab measures traffic per bucket, not per page, so it
+has no finding for "visitors leave the pricing page" yet.
+
 ## Verification
 
 A variant passes only if every check passes, on top of a baseline that
@@ -162,6 +221,7 @@ passes the same suite in the same run:
 | Invariants | the site's own `lab/invariants/*.ts`, at every viewport: Playwright scripts, or Assay invariants with locked checks mined from the baseline |
 | Budgets | aXe, console errors, failed requests, new origins, overflow, LCP, CLS, page status, dead links |
 | Acceptance | the experiment's own checks, written as data with the spec |
+| Fix | for a fix only: the findings it cites are gone, and no new ones appeared |
 
 `npm run check` runs lint, typecheck and all tests.
 
