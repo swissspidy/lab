@@ -72,6 +72,8 @@ describe('validateSpec', () => {
 		assert.deepEqual(fixCodes({ ...fix, evidence: [] }), ['spec-fix-evidence']);
 		assert.deepEqual(fixCodes({ ...fix, evidence: undefined }), ['spec-fix-evidence']);
 		assert.deepEqual(fixCodes({ ...fix, evidence: ['x', 'x'] }), ['spec-evidence']);
+		// A page name with a line break cannot be written as one line of a Graft spec: such ids are refused.
+		assert.deepEqual(fixCodes({ ...fix, evidence: ['layout.overflow@a\nb.html'] }), ['spec-evidence']);
 		assert.deepEqual(fixCodes({ ...fix, evidence: ['a11y.color-contrast@index.html'] }), ['spec-evidence-unknown']);
 		assert.deepEqual(fixCodes({ ...fix, expectedEffect: 'next_step_click up' }), ['spec-effect']);
 		// An experiment may cite findings, and must still name its effect on the metric.
