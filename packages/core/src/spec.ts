@@ -139,8 +139,8 @@ export function validateSpec(raw: unknown, config: LabConfig, history: LedgerEve
 	}
 	if (raw.kind !== undefined && raw.kind !== 'experiment' && raw.kind !== 'fix') error('spec-kind', 'kind', '`kind` must be `experiment` or `fix`.');
 	const fix = raw.kind === 'fix';
-	if (raw.evidence !== undefined && !(Array.isArray(raw.evidence) && raw.evidence.every(isText) && new Set(raw.evidence).size === raw.evidence.length)) {
-		error('spec-evidence', 'evidence', '`evidence` must list finding ids, each once.');
+	if (raw.evidence !== undefined && !(Array.isArray(raw.evidence) && raw.evidence.every((id) => isText(id) && !/[\r\n]/.test(id)) && new Set(raw.evidence).size === raw.evidence.length)) {
+		error('spec-evidence', 'evidence', '`evidence` must list finding ids, each once and on one line.');
 	} else if (Array.isArray(raw.evidence) && findings) {
 		const known = new Set(findings.map((f) => f.id));
 		for (const [i, id] of (raw.evidence as string[]).entries()) {

@@ -41,6 +41,8 @@ export interface ExperimentView {
 	measurements: Array<{ at: string; day: number; baseline: Counts; variant: Counts; probability: number; decision: { action: string; reason: string } }>;
 	events: LedgerEvent[];
 	outcome: string;
+	/** The state in a few words, for the badge. */
+	label: string;
 	started: string;
 	ended: string;
 }
@@ -58,6 +60,9 @@ const OUTCOME: Record<string, string> = {
 	reverted: 'Reverted',
 	aborted: 'Aborted',
 };
+
+/** An approved fix waits to be merged, not shipped. */
+const stateLabel = (state: string, kind: unknown): string => (state === 'approved' && kind === 'fix' ? 'Approved, waiting to merge' : (OUTCOME[state] ?? state));
 
 function reasonOf(event: LedgerEvent): string {
 	const p = event.payload;
@@ -96,7 +101,8 @@ export function experimentViews(events: LedgerEvent[]): ExperimentView[] {
 						return { at: e.at, day: Number(e.payload.day), baseline: stats.baseline, variant: stats.variant, probability: Number(e.payload.probability), decision: e.payload.decision as { action: string; reason: string } };
 					}),
 				events: list,
-				outcome: `${last.type === 'approved' && (proposed?.payload.spec as Spec | undefined)?.kind === 'fix' ? 'Approved, waiting to merge' : (OUTCOME[last.type] ?? last.type)}${['kept', 'merged', 'reverted', 'aborted', 'verify_failed'].includes(last.type) && reasonOf(last) ? `: ${reasonOf(last)}` : ''}`,
+				label: stateLabel(last.type, (proposed?.payload.spec as Spec | undefined)?.kind),
+				outcome: `${stateLabel(last.type, (proposed?.payload.spec as Spec | undefined)?.kind)}${['kept', 'merged', 'reverted', 'aborted', 'verify_failed'].includes(last.type) && reasonOf(last) ? `: ${reasonOf(last)}` : ''}`,
 				started: list[0]!.at,
 				ended: last.at,
 			};
@@ -159,8 +165,8 @@ export function renderReport(events: LedgerEvent[], options: ReportOptions = {})
 		);
 		const timeline = v.events.map((e) => `<li><time>${escape(e.at.replace('T', ' ').slice(0, 16))}</time> ${escape(e.type)}${reasonOf(e) && !['verify_failed', 'verify_passed'].includes(e.type) ? ` – ${escape(reasonOf(e))}` : ''}${e.type === 'approved' ? ` by ${escape(e.payload.by)}` : ''}</li>`);
 		return `<section id="${escape(v.id)}" class="exp state-${escape(v.state)}">
-<h2><a href="#${escape(v.id)}">${escape(v.id)}</a> <span class="badge">${escape(OUTCOME[v.state] ?? v.state)}</span></h2>
-${v.outcome !== (OUTCOME[v.state] ?? v.state) ? `<p class="outcome">${escape(v.outcome)}</p>` : ''}
+<h2><a href="#${escape(v.id)}">${escape(v.id)}</a> <span class="badge">${escape(v.label)}</span></h2>
+${v.outcome !== v.label ? `<p class="outcome">${escape(v.outcome)}</p>` : ''}
 <dl>
 <dt>Kind</dt><dd>${v.spec.kind === 'fix' ? 'Fix: verified in the sandbox and merged after approval, without an experiment' : 'Experiment: shown to a share of visitors and measured'}</dd>
 <dt>Hypothesis</dt><dd>${escape(v.spec.hypothesis)}</dd>

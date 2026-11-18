@@ -113,7 +113,7 @@ export class ModelProposer implements Proposer {
 		const files = siteFiles(ctx.site.dir, this.config);
 		const history = summarizeHistory(ctx.history);
 		const base = [
-			`Metric: ${this.config.metric.id} (a binary outcome per visit). Expected effect must be "${this.config.metric.id} up" or "${this.config.metric.id} down".`,
+			`Metric: ${this.config.metric.id} (a binary outcome per visit). An experiment's expected effect must be "${this.config.metric.id} up" or "${this.config.metric.id} down"; a fix's is "none".`,
 			`Build: \`${this.config.site.build}\` writes the site to ${this.config.site.outDir}/. Checks name pages as they are served from there.`,
 			`Viewports: ${this.config.viewports.map((v) => `${v.width}x${v.height}`).join(', ')}.`,
 			ctx.baseline ? `Current baseline: ${JSON.stringify(ctx.baseline)}` : 'No traffic data yet.',

@@ -248,7 +248,9 @@ async function main(argv: string[]): Promise<number> {
 					decider: new BetaBinomialDecider(config),
 					promote: async (variant) => {
 						const fix = specFromLedger(await ledger.history(), variant.experiment).kind === 'fix';
-						gitPromote(siteDir, variant, fix ? `lab: fix ${variant.experiment}` : undefined);
+						// A fix is committed only onto the site it was verified on.
+						if (fix) gitPromote(siteDir, variant, `lab: fix ${variant.experiment}`, { verifiedAt: variant.base.commit });
+						else gitPromote(siteDir, variant);
 					},
 				});
 				process.stdout.write(values.json ? `${JSON.stringify(result, null, '\t')}\n` : summarizeTick(result));

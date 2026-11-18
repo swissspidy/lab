@@ -255,6 +255,13 @@ describe('runIteration with an observer', () => {
 		assert.equal(stopped, 1, 'the observed baseline is stopped');
 	});
 
+	it('refuses any citation when nothing was observed', async () => {
+		const d = deps({ observer: undefined, proposer: { propose: async () => ({ ...spec(), evidence: ['a11y.made-up@index.html'] }) } });
+		const result = await runIteration(d);
+		assert.equal(result.outcome, 'aborted');
+		assert.match(result.reason, /spec-evidence-unknown/);
+	});
+
 	it('stops before Propose when the baseline cannot be observed', async () => {
 		let asked = false;
 		const d = deps({

@@ -97,7 +97,8 @@ export async function runIteration(deps: IterationDeps): Promise<IterationResult
 			const { code, message } = describe(error);
 			return result(null, 'aborted', `${code}: ${message}`);
 		}
-		const { spec, diagnostics } = validateSpec(raw, config, history, deps.observer ? findings : undefined);
+		// Without an observer there are no findings, so any citation is refused.
+		const { spec, diagnostics } = validateSpec(raw, config, history, findings);
 		const id = typeof raw?.id === 'string' && /^[a-z0-9][a-z0-9-]{1,62}$/.test(raw.id) && !history.some((e) => e.experiment === raw.id) ? raw.id : null;
 		if (!spec) {
 			const reason = diagnostics.map((d) => `${d.code}: ${d.message}`).join(' ');

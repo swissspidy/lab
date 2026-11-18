@@ -29,6 +29,9 @@ describe('Graft spec adapter', () => {
 		const { spec: back, diagnostics } = fromGraftMarkdown(md);
 		assert.deepEqual(diagnostics, []);
 		assert.deepEqual(back, fix);
+		// An id is written as the finding has it: a page name with two spaces keeps both.
+		const spaced: ExperimentSpec = { ...fix, evidence: ['layout.overflow@my  page.html'] };
+		assert.deepEqual(fromGraftMarkdown(toGraftMarkdown(spaced)).spec?.evidence, ['layout.overflow@my  page.html']);
 		assert.doesNotMatch(toGraftMarkdown(spec), /## (Kind|Evidence)/);
 		const bad = fromGraftMarkdown(md.replace('## Kind\n\nfix', '## Kind\n\npatch'));
 		assert.deepEqual(bad.diagnostics.map((d) => d.code), ['graft-spec-kind']);

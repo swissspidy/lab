@@ -112,7 +112,7 @@ describe('fixes (M6)', { concurrency: 3 }, () => {
 			deployer: { ship: async (v) => void shipped.push(v.experiment), rollback: async () => {}, promote: async () => {}, kill: async () => {} },
 			meter: { read: async () => assert.fail('a fix is never measured'), traffic: async () => assert.fail('a fix needs no traffic') },
 			decider: new BetaBinomialDecider(config),
-			promote: async (variant) => void gitPromote(dir, variant, `lab: fix ${variant.experiment}`),
+			promote: async (variant) => void gitPromote(dir, variant, `lab: fix ${variant.experiment}`, { verifiedAt: variant.base.commit }),
 		};
 		const first = await tick({ ...iteration(dir, config, experiment), ...live });
 		assert.equal(first.step, 'iterate');

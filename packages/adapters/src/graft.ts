@@ -42,7 +42,7 @@ export function toGraftMarkdown(spec: ExperimentSpec): string {
 		...criteria,
 		'',
 		...(spec.kind === 'fix' ? ['## Kind', '', 'fix', ''] : []),
-		...(spec.evidence?.length ? ['## Evidence', '', ...spec.evidence.map((id) => `- ${oneLine(id)}`), ''] : []),
+		...(spec.evidence?.length ? ['## Evidence', '', ...spec.evidence.map((id) => `- ${id}`), ''] : []),
 		'## Hypothesis',
 		'',
 		oneLine(spec.hypothesis),
@@ -113,8 +113,8 @@ export function fromGraftMarkdown(source: string, surface?: Surface): { spec: Ex
 		(text ?? '')
 			.split('\n')
 			.filter((line) => line.startsWith('- '))
-			.map((line) => line.slice(2).trim());
-	const touches = list(section('Touches'));
+			.map((line) => line.slice(2));
+	const touches = list(section('Touches')).map((t) => t.trim());
 	const kind = section('Kind');
 	if (kind !== undefined && !['fix', 'experiment'].includes(oneLine(kind))) {
 		return { spec: null, diagnostics: [{ code: 'graft-spec-kind', severity: 'error', message: 'The "## Kind" section must say `fix` or `experiment`.' }] };

@@ -85,7 +85,10 @@ export async function ship(deps: LiveDeps, id: string): Promise<LiveOutcome> {
  * Merges an approved fix into the site's repository. A fix is verified
  * offline (Verify showed its findings gone and nothing new), so it needs no
  * traffic. It waits while an experiment is live: merging would change the
- * baseline under it. The site's own deploy publishes the merge.
+ * baseline under it. The variant passed to `promote` has the commit it was
+ * verified on as its base, so `promote` can refuse a site that changed
+ * since (gitPromote's `verifiedAt`). The site's own deploy publishes the
+ * merge.
  */
 export async function merge(deps: Pick<LiveDeps, 'ledger' | 'site' | 'promote' | 'now'>, id: string): Promise<LiveOutcome> {
 	const events = await deps.ledger.history();
@@ -95,7 +98,9 @@ export async function merge(deps: Pick<LiveDeps, 'ledger' | 'site' | 'promote' |
 	if (spec.kind !== 'fix') throw new StageError('merge-not-fix', `${id} is an experiment: it ships to visitors and is kept only once measured.`);
 	const live = liveExperiment(events);
 	if (live) throw new StageError('merge-experiment-live', `${live} is live. A fix waits until it ends, so the baseline does not change under it.`);
-	const variant = variantFromLedger(events, id, deps.site);
+	// The variant as verified: its base is the commit it was built and checked on.
+	const built = events.find((e) => e.experiment === id && e.type === 'built')!;
+	const variant = { ...variantFromLedger(events, id, deps.site), base: { dir: deps.site.dir, commit: built.siteCommit } };
 	const base = { experiment: id, siteCommit: deps.site.commit, patchHash: variant.patchHash };
 	const at = (deps.now?.() ?? new Date()).toISOString();
 	try {
@@ -106,7 +111,7 @@ export async function merge(deps: Pick<LiveDeps, 'ledger' | 'site' | 'promote' |
 		return { outcome: 'aborted', experiment: id, reason: `Could not merge: ${message}` };
 	}
 	const reason = `Verified fix for ${(spec.evidence ?? []).join(', ')}; merged without an experiment.`;
-	await deps.ledger.append({ ...base, type: 'merged', at, payload: { reason } });
+	await deps.ledger.append({ ...base, type: 'merged', at, payload: { reason, verifiedCommit: built.siteCommit } });
 	return { outcome: 'merged', experiment: id, reason };
 }
 

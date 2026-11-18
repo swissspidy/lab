@@ -329,7 +329,7 @@ export type LedgerPayloads = {
 	measured: { day: number; stats: BucketStats; probability: number; decision: Decision };
 	kept: { reason: string };
 	/** A fix, merged into the site's repository after approval. */
-	merged: { reason: string };
+	merged: { reason: string; verifiedCommit?: string };
 	reverted: { reason: 'guardrail' | 'decision' | 'kill'; detail?: string; stats?: BucketStats };
 	/** `stage` names where the experiment stopped; the rest says why. */
 	aborted: { stage: string; [key: string]: unknown };

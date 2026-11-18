@@ -198,7 +198,9 @@ An effect that can be checked offline needs no visitors, so an approved fix
 is merged into the site's repository (`lab: fix <id>`) instead of shipped.
 It does not count towards `auto` mode, which needs completed experiments.
 It waits while an experiment is live, so the baseline does not change under
-it. The ledger refuses a shipped fix (`ledger-fix-shipped`) and a merged
+it. It is merged only onto the site it was verified on: if anything
+outside `lab/` changed since, the merge is refused (`promote-site-changed`)
+and the next iteration can propose it again. The ledger refuses a shipped fix (`ledger-fix-shipped`) and a merged
 experiment (`ledger-experiment-merged`). The site's own deployment, or
 `lab publish` on the reference host, publishes the merge.
 

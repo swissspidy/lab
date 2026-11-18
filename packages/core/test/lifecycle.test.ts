@@ -285,6 +285,7 @@ describe('lifecycle', () => {
 			const events = await ledger.history();
 			assert.equal(events.at(-1)!.type, 'merged');
 			assert.match(String(events.at(-1)!.payload.reason), /layout\.overflow@index\.html/);
+			assert.equal(events.at(-1)!.payload.verifiedCommit, 'c');
 		});
 
 		it('refuses to merge an experiment', async () => {
@@ -366,6 +367,46 @@ describe('gitPromote', () => {
 			writeFileSync(join(repo, 'site', 'src', 'a.html'), 'dirty\n');
 			assert.throws(() => gitPromote(join(repo, 'site'), { experiment: 'exp-0002', patch: PATCH }), (e: unknown) => e instanceof StageError && e.code === 'promote-dirty');
 		} finally {
+			rmSync(repo, { recursive: true, force: true });
+		}
+	});
+
+	it('commits a fix only onto the site it was verified on, and finds an earlier attempt at HEAD', () => {
+		const repo = mkdtempSync(join(tmpdir(), 'lab-git-'));
+		const env = { ...process.env };
+		try {
+			const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...args], { cwd: repo }).toString().trim();
+			process.env.GIT_AUTHOR_NAME = process.env.GIT_COMMITTER_NAME = 't';
+			process.env.GIT_AUTHOR_EMAIL = process.env.GIT_COMMITTER_EMAIL = 't@example.invalid';
+			git('init', '-q');
+			execFileSync('mkdir', ['-p', join(repo, 'src'), join(repo, 'lab')]);
+			writeFileSync(join(repo, 'src', 'a.html'), 'a\n');
+			writeFileSync(join(repo, 'src', 'b.html'), 'b\n');
+			git('add', '-A');
+			git('commit', '-qm', 'base');
+			const verified = git('rev-parse', 'HEAD');
+			const fix = { experiment: 'exp-0005', patch: PATCH };
+
+			// Only the ledger moved since: the fix is still on the site it was checked against.
+			writeFileSync(join(repo, 'lab', 'ledger.jsonl'), '{}\n');
+			git('add', '-A');
+			git('commit', '-qm', 'lab: ledger');
+			const merged = gitPromote(repo, fix, 'lab: fix exp-0005', { verifiedAt: verified });
+			assert.equal(git('log', '-1', '--format=%s'), 'lab: fix exp-0005');
+			// The ledger write failed and the merge runs again: the commit is found, not applied twice.
+			assert.equal(gitPromote(repo, fix, 'lab: fix exp-0005', { verifiedAt: verified }), merged);
+			assert.equal(readFileSync(join(repo, 'src', 'a.html'), 'utf8'), 'b\n');
+
+			// The site changed outside lab/ since it was verified: refused, and nothing is committed.
+			writeFileSync(join(repo, 'src', 'b.html'), 'changed\n');
+			git('commit', '-qam', 'someone else');
+			const head = git('rev-parse', 'HEAD');
+			const other = { experiment: 'exp-0006', patch: PATCH.replaceAll('-a', '-b').replaceAll('+b', '+c') };
+			assert.throws(() => gitPromote(repo, other, 'lab: fix exp-0006', { verifiedAt: verified }), (e: unknown) => e instanceof StageError && e.code === 'promote-site-changed');
+			assert.throws(() => gitPromote(repo, other, 'lab: fix exp-0006', { verifiedAt: `${head}+dirty` }), (e: unknown) => e instanceof StageError && e.code === 'promote-unverified-base');
+			assert.equal(git('rev-parse', 'HEAD'), head);
+		} finally {
+			process.env = env;
 			rmSync(repo, { recursive: true, force: true });
 		}
 	});

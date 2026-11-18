@@ -69,7 +69,8 @@ describe('report', () => {
 			await ledger.append({ ...a, type: 'verify_passed', payload: { results: [{ gate: 'fix', check: 'fix.resolved', passed: true, message: 'Gone from the variant: layout.overflow@pricing.html.' }] } });
 			await ledger.append({ ...a, type: 'approved', payload: { by: 'pascal' } });
 			const pending = renderReport(await ledger.history());
-			assert.ok(pending.includes('Approved, waiting to merge'));
+			assert.ok(pending.includes('<span class="badge">Approved, waiting to merge</span>'));
+			assert.ok(!pending.includes('waiting to ship'));
 			await ledger.append({ ...a, type: 'merged', payload: { reason: 'Verified fix for layout.overflow@pricing.html; merged without an experiment.' } });
 			const html = renderReport(await ledger.history());
 			for (const text of ['Fix: verified in the sandbox and merged after approval', '<code>layout.overflow@pricing.html</code>: The page scrolls sideways at 390x844.', 'fix.resolved', 'Merged: Verified fix', '1 fix(es) merged', 'state-merged']) {
