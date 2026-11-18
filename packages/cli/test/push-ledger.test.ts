@@ -60,6 +60,15 @@ describe('push-ledger.sh', () => {
 		assert.equal(git(root, '--git-dir=remote.git', 'rev-parse', 'main'), before);
 	});
 
+	it('refuses it too when the site change was fetched before the push step', () => {
+		mergeFix();
+		upstream('site/src/b.html', 'b\n');
+		git(lab, 'fetch', '-q');
+		const result = push();
+		assert.equal(result.status, 1, result.stderr);
+		assert.match(result.stderr, /promote-site-changed/);
+	});
+
 	it('lets a ledger change upstream through the guard, and fails loudly when the rebase conflicts', () => {
 		mergeFix();
 		upstream('site/lab/ledger.jsonl', '{"type":"other"}\n');

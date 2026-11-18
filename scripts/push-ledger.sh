@@ -20,10 +20,12 @@ if ! git diff --cached --quiet; then git commit -q -m "lab: $COMMAND"; fi
 if [ -z "$(git log --branches --not --remotes --oneline)" ]; then exit 0; fi
 for attempt in 1 2 3; do
 	if git push -q; then exit 0; fi
-	before=$(git rev-parse '@{u}')
 	git fetch -q
+	# Compare from where our commits branch off, not from the tracking ref: an
+	# earlier fetch may already have moved that past the site the fix was made on.
+	base=$(git merge-base HEAD '@{u}')
 	ours=$(git log --format=%s '@{u}..HEAD')
-	if grep -q '^lab: fix ' <<<"$ours" && ! git diff --quiet "$before" '@{u}' -- "$SITE" ":(exclude)$SITE/lab"; then
+	if grep -q '^lab: fix ' <<<"$ours" && ! git diff --quiet "$base" '@{u}' -- "$SITE" ":(exclude)$SITE/lab"; then
 		echo "::error::promote-site-changed: a fix was merged onto the site as checked out, but the site changed upstream since. It is not pushed onto a site it was not verified on; the next run sees it still approved and refuses to merge it." >&2
 		exit 1
 	fi
